@@ -1,0 +1,1631 @@
+Project directory structure:
+├── .env
+├── commands
+│   ├── confirmAffiliate.js
+│   ├── help.js
+│   ├── onboard.js
+│   ├── roles.js
+│   ├── rules.js
+│   └── verify.js
+├── config.js
+├── deploy-commands.js
+├── events
+│   ├── guildMemberAdd.js
+│   ├── interactionCreate.js
+│   ├── messageReactionAdd.js
+│   └── ready.js
+├── handlers
+│   ├── buttonHandlers.js
+│   ├── modalHandlers.js
+│   └── selectMenuHandlers.js
+├── index.js
+├── package.json
+├── refactor.js
+├── services
+│   └── actionNetwork.js
+├── snapshot.cjs
+├── snapshot.json
+└── utils
+    ├── logger.js
+    ├── permissionChecks.js
+    ├── roleManager.js
+    ├── roleMaps.js
+    ├── sendOnboarding.js
+    └── withErrorHandler.js
+
+
+=== .env ===
+DISCORD_TOKEN=MTM2NTEwMjQ2MDQ3NzI0MzQzMg.G45fj5.WQOZQMzqo_sZ9NoCy_MKmYhN_8rzgvXrLI1bGY
+CLIENT_ID=1365102460477243432
+GUILD_ID=1287535866629193748
+AN_TOKEN=573aaf64ec5c6cba31bcd05336beec16
+
+CHANNEL_ONBOARDING=1365106392574328943
+CHANNEL_RULES=1365106561936130048
+MESSAGE_RULES=1365106658346270800
+
+ROLE_PENDING=1291078682923896862
+ROLE_MEMBER_UNVERIFIED=1365105914515947631
+ROLE_AFFILIATE_UNVERIFIED=1365106007847731262
+ROLE_RULES_ACCEPTED=1365106040068116511
+ROLE_MEMBER=1292577006600327230
+ROLE_AFFILIATE=1292577109922943097
+
+ROLE_PRONOUN_HE=1303843869288566784           
+ROLE_PRONOUN_SHE=1303843870043410475          
+ROLE_PRONOUN_THEY=1303843871276531794
+ROLE_PRONOUN_ANY=1303843872272056320
+
+ROLE_NORTH=1314357957990809702                 
+ROLE_SOUTH=1314358356294504458   
+
+ROLE_COMMUNICATIONS=1292577178021527673
+ROLE_MEMBERSHIP_ENGAGEMENT=1292577287157584005
+ROLE_POLITICAL_EDUCATION=1360764334103462129
+ROLE_LEGISLATION_TRACKING=1306789749540917329
+ROLE_RED_RABBITS=1308176694326198334
+ROLE_PALESTINE=1292577384326889685
+ROLE_MIGRANT_RIGHTS=1323437471698128968
+ROLE_QUEER_SOCIALISTS=1338193223172231198
+ROLE_ARTS_CULTURE=1324774604618858496
+ROLE_HOUSING_JUSTICE=1358970432358711457
+ROLE_MUTUAL_AID=1359236135955599430
+ROLE_YDSA=1292577439322734705
+
+ROLE_NON_DSA_MEMBER=1355526942727733408
+ROLE_DSA_NON_DE=1355527100823769138
+
+=== commands/confirmAffiliate.js ===
+import { PermissionsBitField } from 'discord.js';
+
+import { ROLE_AFFILIATE_UNVERIFIED, ROLE_AFFILIATE } from '../config.js';
+export const data = {
+  name: 'confirm-affiliate',
+  description: 'Confirm a user as chapter affiliate',
+  options: [
+    {
+      name: 'user',
+      description: 'User to confirm',
+      type: 6, // USER
+      required: true
+    }
+  ]
+};
+
+export async function execute(interaction) {
+  // Permission check
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return interaction.reply({ content: '❌ You lack Manage Roles permission.', ephemeral: true });
+  }
+
+  const targetUser = interaction.options.getUser('user');
+  if (!targetUser) {
+    return interaction.reply({ content: '❌ Please mention a valid user.', ephemeral: true });
+  }
+
+  try {
+    // Fetch guild member
+    const member = await interaction.guild.members.fetch(targetUser.id);
+
+    // Remove "unverified affiliate" and add "affiliate"
+    await member.roles.remove(ROLE_AFFILIATE_UNVERIFIED).catch(() => {});
+    await member.roles.add(ROLE_AFFILIATE);
+
+    // Confirm to moderator
+    await interaction.reply({ content: `✅ ${targetUser.tag} is now a chapter affiliate.`, ephemeral: true });
+
+    // DM the user
+    await member.send('✅ You now have **chapter-affiliate** access. Welcome!').catch(console.error);
+  } catch (error) {
+    console.error('Error confirming affiliate:', error);
+    return interaction.reply({ content: '❌ Failed to confirm affiliate. Please try again or contact an admin.', ephemeral: true });
+  }
+}
+
+
+=== commands/help.js ===
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('help')
+  .setDescription('Get help with bot commands');
+
+export async function execute(interaction, client) {
+  const embed = new EmbedBuilder()
+    .setTitle('🤖 DSA Discord Bot Help')
+    .setDescription('Here are the available commands for this server:')
+    .setColor('#e63946')
+    .addFields([
+      {
+        name: '/verify',
+        value: 'Start the verification process to confirm your DSA membership status'
+      },
+      {
+        name: '/roles',
+        value: 'Open the role-selection menu to update your pronouns, region, and working groups'
+      },
+      {
+        name: '/rules',
+        value: 'Review the server rules'
+      },
+      {
+        name: '/help',
+        value: 'Show this help message'
+      }
+    ])
+    .setFooter({
+      text: 'Delaware DSA',
+      iconURL: interaction.guild.iconURL() || undefined
+    });
+  
+  // Add moderator commands if user has the right permissions
+  if (interaction.member.permissions.has('ManageRoles')) {
+    embed.addFields([
+      {
+        name: '🔧 Moderator Commands',
+        value: [
+          '`/onboard` - Send onboarding message to a user',
+          '`/confirm-affiliate` - Confirm a user as a chapter affiliate'
+        ].join('\n')
+      }
+    ]);
+  }
+  
+  await interaction.reply({
+    embeds: [embed],
+    ephemeral: true
+  });
+}
+
+=== commands/onboard.js ===
+// commands/onboard.js
+import { PermissionsBitField } from 'discord.js';
+import { sendOnboarding } from '../utils/sendOnboarding.js';
+
+export const data = {
+  name: 'onboard',
+  description: 'Trigger onboarding for a user',
+  options: [
+    { name: 'user', description: 'User to onboard', type: 6, required: true }
+  ]
+};
+
+export async function execute(interaction) {
+  // 1) ACK immediately so Discord shows "Bot is thinking..."
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // 2) Permission guard—if they lack Manage Server, just swallow it
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+      return interaction.deleteReply();
+    }
+
+    // 3) Grab the user, fetch the GuildMember
+    const user = interaction.options.getUser('user');
+    if (!user) {
+      return interaction.deleteReply();
+    }
+    const member = await interaction.guild.members.fetch(user.id);
+
+    // 4) Send your onboarding embed/buttons into #onboarding
+    await sendOnboarding(member);
+    console.log(`[onboard] ✅ Sent onboarding for ${user.tag}`);
+
+  } catch (err) {
+    console.error('[onboard] ❌ Error:', err);
+    // (optionally log it somewhere, but do NOT send another ephemeral)
+  } finally {
+    // 5) Remove the "thinking" indicator so nothing else remains
+    await interaction.deleteReply();
+  }
+}
+
+
+=== commands/roles.js ===
+// commands/roles.js
+import { SlashCommandBuilder } from 'discord.js';
+import {
+  ActionRowBuilder,
+  StringSelectMenuBuilder
+} from 'discord.js';
+import {
+  memberRoleMap,
+  memberRoleLabels,
+  affiliateRoleMap,
+  affiliateRoleLabels
+} from '../utils/roleMaps.js';
+import { ROLE_AFFILIATE_UNVERIFIED } from '../config.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('roles')
+  .setDescription('Re-open your role-selection menu');
+
+export async function execute(interaction) {
+  const member = interaction.member;
+  const isAff = member.roles.cache.has(ROLE_AFFILIATE_UNVERIFIED);
+  const map = isAff ? affiliateRoleMap : memberRoleMap;
+  const labels = isAff ? affiliateRoleLabels : memberRoleLabels;
+
+  // build select menu options from the centralized maps
+  const options = Object.entries(map).map(([key, roleId]) => ({
+    label: labels[key],
+    value: key
+  }));
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(isAff ? 'pick_roles_affiliate' : 'pick_roles_member')
+    .setPlaceholder(isAff
+      ? 'Select pronouns & affiliate tags…'
+      : 'Select pronouns, region & WGs…'
+    )
+    .setMinValues(0)
+    .setMaxValues(options.length)
+    .addOptions(options);
+
+  const row = new ActionRowBuilder().addComponents(menu);
+
+  await interaction.reply({
+    content: '🔧 Re-open your role-selection menu:',
+    components: [row],
+    ephemeral: true
+  });
+}
+
+
+=== commands/rules.js ===
+// src/commands/rules.js
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('rules')
+  .setDescription('Repost the community rules');
+
+export async function execute(interaction) {
+  const rulesEmbed = new EmbedBuilder()
+    .setTitle('📜 Community Rules')
+    .setDescription([
+      'Our **DEDSA Discord Rules** keep us safe, respectful, and energizing for everyone:',
+      '1️⃣ **Be Respectful** – Engage comradely.',
+      '2️⃣ **No Harassment** – Zero tolerance for hate speech or personal attacks.',
+      '3️⃣ **Stay On-Topic** – Keep discussions aligned with our mission.',
+      '4️⃣ **Protect Privacy** – Do not share anyone’s personal info.',
+      '5️⃣ **No Spam** – Avoid excessive messages or unsolicited links.',
+      '6️⃣ **Uphold DSA Values** – Solidarity, equality, and justice in all interactions.',
+      '',
+      'React with ✅ in the #rules channel once you’ve read and agree.'
+    ].join('\n'))
+    .setColor('Blue')
+    .setFooter({ text: 'Use /rules any time to review these.' });
+
+  await interaction.reply({
+    embeds: [rulesEmbed],
+    ephemeral: true
+  });
+}
+
+
+=== commands/verify.js ===
+import { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { lookupAN } from '../services/actionNetwork.js';
+import { CHANNEL_RULES } from '../config.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('verify')
+  .setDescription('Verify your DSA membership by email');
+
+export async function execute(interaction, client) {
+  // Create a modal for email input
+  const modal = new ModalBuilder()
+    .setCustomId('verify_email_modal')
+    .setTitle('Verify Your DSA Membership');
+    
+  const emailInput = new TextInputBuilder()
+    .setCustomId('email_input')
+    .setLabel('Enter your Action Network email')
+    .setPlaceholder('email@example.com')
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+    
+  const row = new ActionRowBuilder().addComponents(emailInput);
+  modal.addComponents(row);
+  
+  await interaction.showModal(modal);
+}
+
+=== config.js ===
+import dotenv from 'dotenv';
+dotenv.config();
+
+// List of all required environment variables
+const required = [
+  'DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID', 'AN_TOKEN',
+  'ROLE_PENDING', 'ROLE_MEMBER_UNVERIFIED', 'ROLE_AFFILIATE_UNVERIFIED',
+  'ROLE_RULES_ACCEPTED', 'ROLE_MEMBER', 'ROLE_AFFILIATE',
+  'CHANNEL_ONBOARDING', 'CHANNEL_RULES', 'MESSAGE_RULES',
+  'ROLE_PRONOUN_HE', 'ROLE_PRONOUN_SHE', 'ROLE_PRONOUN_THEY', 'ROLE_PRONOUN_ANY',
+  'ROLE_NORTH', 'ROLE_SOUTH'
+];
+
+// Validate all required env vars exist
+for (const key of required) {
+  if (!process.env[key]) {
+    console.error(`Missing environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+
+// Export all environment variables as constants
+export const TOKEN = process.env.DISCORD_TOKEN;
+export const CLIENT = process.env.CLIENT_ID;
+export const GUILD = process.env.GUILD_ID;
+export const AN_TOKEN = process.env.AN_TOKEN;
+
+// Roles
+export const ROLE_PENDING = process.env.ROLE_PENDING;
+export const ROLE_MEMBER_UNVERIFIED = process.env.ROLE_MEMBER_UNVERIFIED;
+export const ROLE_AFFILIATE_UNVERIFIED = process.env.ROLE_AFFILIATE_UNVERIFIED;
+export const ROLE_RULES_ACCEPTED = process.env.ROLE_RULES_ACCEPTED;
+export const ROLE_MEMBER = process.env.ROLE_MEMBER;
+export const ROLE_AFFILIATE = process.env.ROLE_AFFILIATE;
+
+// Pronoun roles
+export const ROLE_PRONOUN_HE = process.env.ROLE_PRONOUN_HE;
+export const ROLE_PRONOUN_SHE = process.env.ROLE_PRONOUN_SHE;
+export const ROLE_PRONOUN_THEY = process.env.ROLE_PRONOUN_THEY;
+export const ROLE_PRONOUN_ANY = process.env.ROLE_PRONOUN_ANY;
+
+// Region roles
+export const ROLE_NORTH = process.env.ROLE_NORTH;
+export const ROLE_SOUTH = process.env.ROLE_SOUTH;
+
+// Committee/Working Group roles
+export const ROLE_COMMUNICATIONS = process.env.ROLE_COMMUNICATIONS;
+export const ROLE_MEMBERSHIP_ENGAGEMENT = process.env.ROLE_MEMBERSHIP_ENGAGEMENT;
+export const ROLE_POLITICAL_EDUCATION = process.env.ROLE_POLITICAL_EDUCATION;
+export const ROLE_LEGISLATION_TRACKING = process.env.ROLE_LEGISLATION_TRACKING;
+export const ROLE_RED_RABBITS = process.env.ROLE_RED_RABBITS;
+export const ROLE_PALESTINE = process.env.ROLE_PALESTINE;
+export const ROLE_MIGRANT_RIGHTS = process.env.ROLE_MIGRANT_RIGHTS;
+export const ROLE_QUEER_SOCIALISTS = process.env.ROLE_QUEER_SOCIALISTS;
+export const ROLE_ARTS_CULTURE = process.env.ROLE_ARTS_AND_CULTURE;
+export const ROLE_HOUSING_JUSTICE = process.env.ROLE_HOUSING_JUSTICE;
+export const ROLE_MUTUAL_AID = process.env.ROLE_MUTUAL_AID;
+export const ROLE_YDSA = process.env.ROLE_YDSA;
+
+// Affiliate-specific roles
+export const ROLE_NON_DSA_MEMBER = process.env.ROLE_NON_DSA_MEMBER;
+export const ROLE_DSA_NON_DE = process.env.ROLE_DSA_NON_DE;
+
+// Channels
+export const CHANNEL_ONBOARDING = process.env.CHANNEL_ONBOARDING;
+export const CHANNEL_RULES = process.env.CHANNEL_RULES;
+export const MESSAGE_RULES = process.env.MESSAGE_RULES;
+export const LOG_CHANNEL = process.env.LOG_CHANNEL;
+
+=== deploy-commands.js ===
+// deploy-commands.js
+import { REST, Routes } from 'discord.js';
+import { TOKEN, CLIENT, GUILD } from './config.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const commands = [];
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+// deploy-commands.js - corrected command handling 
+for (const file of commandFiles) {
+  try {
+    const filePath = path.join(commandsPath, file);
+    const fileURL = `file://${filePath}`;
+    const command = await import(fileURL);
+    
+    // Properly handle different export patterns
+    if (command.data && typeof command.data.toJSON === 'function') {
+      // SlashCommandBuilder instance
+      commands.push(command.data.toJSON());
+    } else if (command.data) {
+      // Plain data object
+      commands.push(command.data);
+    } else if (command.default?.data) {
+      // Default export with data property
+      const data = command.default.data;
+      if (typeof data.toJSON === 'function') {
+        commands.push(data.toJSON());
+      } else {
+        commands.push(data);
+      }
+    } else {
+      console.warn(`Command at ${file} has no valid data property`);
+    }
+  } catch (error) {
+    console.error(`Error loading command ${file}:`, error);
+  }
+}
+
+const rest = new REST({ version: '10' }).setToken(TOKEN);
+
+(async () => {
+  try {
+    console.log(`Started refreshing ${commands.length} application commands.`);
+    const data = await rest.put(
+      Routes.applicationGuildCommands(CLIENT, GUILD),
+      { body: commands }
+    );
+    console.log(`Successfully reloaded ${data.length} application commands.`);
+  } catch (error) {
+    console.error('Error deploying commands:', error);
+  }
+})();
+
+=== events/guildMemberAdd.js ===
+// events/guildMemberAdd.js
+import { Events } from 'discord.js';
+import { sendOnboarding } from '../utils/sendOnboarding.js';
+
+export default {
+  name: Events.GuildMemberAdd,
+  once: false,
+  async execute(member) {
+    await sendOnboarding(member);
+    console.log(`✅ Onboarding sent to ${member.user.tag}`);
+  }
+};
+
+
+=== events/interactionCreate.js ===
+// events/interactionCreate.js
+import { Events } from 'discord.js';
+import { handleButtons } from '../handlers/buttonHandlers.js';
+import modalHandler from '../handlers/modalHandlers.js';
+import { handleSelectMenus } from '../handlers/selectMenuHandlers.js';
+
+export default {
+  name: Events.InteractionCreate,
+  /**
+   * @param {import('discord.js').Interaction} interaction
+   * @param {import('discord.js').Client} client
+   */
+  async execute(interaction, client) {
+      console.log(`[interaction] ${interaction.user.tag} → ${interaction.commandName || interaction.customId}`);
+
+    try {
+      // Slash commands
+      if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) {
+          return interaction.reply({ content: '❌ This command isn’t implemented yet.', ephemeral: true });
+        }
+        await command.execute(interaction, client);
+        return;
+      }
+
+      // Buttons
+      if (interaction.isButton()) {
+        return handleButtons(interaction, client);
+      }
+
+      // Select menus
+      if (interaction.isStringSelectMenu()) {
+        return handleSelectMenus(interaction, client);
+      }
+
+      // Modals
+      if (interaction.isModalSubmit()) {
+        return modalHandler.execute(interaction, client);
+      }
+    } catch (error) {
+      console.error('Error handling interaction:', error);
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: '❌ There was an error processing your request.', ephemeral: true }).catch(console.error);
+      } else {
+        await interaction.reply({ content: '❌ There was an error processing your request.', ephemeral: true }).catch(console.error);
+      }
+    }
+  }
+};
+
+
+=== events/messageReactionAdd.js ===
+// events/messageReactionAdd.js
+import { Events } from 'discord.js';
+import {
+  ROLE_MEMBER_UNVERIFIED,
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_RULES_ACCEPTED,
+  ROLE_MEMBER,
+  MESSAGE_RULES,
+  LOG_CHANNEL
+} from '../config.js';
+
+export default {
+  name: Events.MessageReactionAdd,
+  /**
+   * @param {import('discord.js').MessageReaction} reaction
+   * @param {import('discord.js').User} user
+   * @param {import('discord.js').Client} client
+   */
+  async execute(reaction, user, client) {
+    // Ignore bot reactions
+    if (user.bot) return;
+
+    // Ensure reaction is fully fetched
+    if (reaction.partial) {
+      try {
+        await reaction.fetch();
+      } catch (error) {
+        console.error('Error fetching partial reaction:', error);
+        return;
+      }
+    }
+
+    // Only proceed if this is a ✅ on the rules message
+    if (
+      reaction.message.id !== MESSAGE_RULES ||
+      reaction.emoji.name !== '✅'
+    ) {
+      return;
+    }
+
+    const guild = reaction.message.guild;
+    if (!guild) return;
+
+    // Fetch up-to-date guild member
+    const member = await guild.members.fetch(user.id);
+
+    // Helper to log to channel
+    async function logToChannel(content) {
+      if (!LOG_CHANNEL) return;
+      try {
+        const logCh = await guild.channels.fetch(LOG_CHANNEL);
+        if (logCh?.isTextBased()) {
+          await logCh.send(content);
+        }
+      } catch (err) {
+        console.error('Logging error:', err);
+      }
+    }
+
+    // Grant the "rules accepted" intermediary role
+    try {
+      await member.roles.add(ROLE_RULES_ACCEPTED);
+    } catch (error) {
+      console.error('Failed to add rules accepted role:', error);
+      await member.send('❌ I had trouble assigning the "rules accepted" role. Please contact a moderator.').catch(console.error);
+      await logToChannel(`❌ ERROR: Failed to add RULES_ACCEPTED to ${user.tag}: ${error.message}`);
+      return;
+    }
+
+    // Handle DSA members (auto-grant full access)
+    if (member.roles.cache.has(ROLE_MEMBER_UNVERIFIED)) {
+      // Remove unverified roles
+      await member.roles.remove([ROLE_MEMBER_UNVERIFIED, ROLE_RULES_ACCEPTED]).catch(console.error);
+
+      // Grant full Member role
+      try {
+        await member.roles.add(ROLE_MEMBER);
+        await member.send("✅ You've accepted the rules and now have full Member access!").catch(console.error);
+        await logToChannel(`📝 INFO: ${user.tag} upgraded to full member`);
+      } catch (error) {
+        console.error('Failed to add member role:', error);
+        await member.send('❌ I had trouble assigning your Member role. Please contact a moderator.').catch(console.error);
+        await logToChannel(`❌ ERROR: Failed to add MEMBER to ${user.tag}: ${error.message}`);
+      }
+    }
+    // For affiliates, just remove intermediary and notify mods
+    else if (member.roles.cache.has(ROLE_AFFILIATE_UNVERIFIED)) {
+      await member.roles.remove(ROLE_RULES_ACCEPTED).catch(console.error);
+
+      await member.send('⏳ Thanks for reading the rules. A moderator will review your affiliate access soon.').catch(console.error);
+
+      const alert = `🚨 ALERT: <@&${ROLE_MEMBER}> ${user.tag} is waiting for affiliate approval!`;
+      await logToChannel(alert);
+    }
+  }
+};
+
+
+=== events/ready.js ===
+import { Events } from 'discord.js';
+
+export default {
+  name: Events.ClientReady,
+  once: true,
+  /**
+   * @param {import('discord.js').Client} client
+   */
+  async execute(client) {
+    console.log(`✅ Bot online as ${client.user.tag}`);
+
+    // Update bot presence
+    client.user.setPresence({
+      activities: [{ name: 'Delaware DSA', type: 3 }], // "Watching"
+      status: 'online'
+    });
+  }
+};
+
+
+=== handlers/buttonHandlers.js ===
+// handlers/buttonHandlers.js
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} from 'discord.js';
+import {
+  ROLE_PENDING,
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_MEMBER_UNVERIFIED,
+  ROLE_MEMBER
+} from '../config.js';
+
+export async function handleButtons(interaction) {
+  console.log(`[buttons] click ${interaction.customId} by ${interaction.user.tag}`);
+  const handlerMap = {
+    'verify_start': handleVerifyStart,
+    'affiliate_start': handleAffiliateStart,
+    'roles_done': handleRolesDone,
+    'rules_accept_member': handleRulesAccept,
+    'rules_accept_affiliate': handleRulesAccept
+  };
+
+  const handler = handlerMap[interaction.customId];
+  if (!handler) {
+    console.warn(`[buttons] No handler for ${interaction.customId}`);
+    return interaction.reply({ content: '❌ Unexpected button—please contact an admin.', ephemeral: true });
+  }
+
+  try {
+    await handler(interaction);
+  } catch (err) {
+    console.error(`[buttons] Error in ${interaction.customId}:`, err);
+    if (!interaction.replied) {
+      await interaction.reply({ content: '❌ Error handling button—see logs.', ephemeral: true });
+    }
+  }
+}
+
+async function handleVerifyStart(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId('verify_email_modal')
+    .setTitle('Verify Your DSA Membership');
+
+  const emailInput = new TextInputBuilder()
+    .setCustomId('email_input')
+    .setLabel('Enter your Action Network email')
+    .setPlaceholder('email@example.com')
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(emailInput));
+  console.log(`[buttons] showing verify modal to ${interaction.user.tag}`);
+  await interaction.showModal(modal);
+}
+
+async function handleAffiliateStart(interaction) {
+  await interaction.member.roles.remove(ROLE_PENDING).catch(console.error);
+  await interaction.member.roles.add(ROLE_AFFILIATE_UNVERIFIED).catch(console.error);
+
+  await interaction.update({
+    content: `ℹ️ You’re set up as an **affiliate**.\n\nWhen you’re ready, click **Accept Rules** below.`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('rules_accept_affiliate')
+          .setLabel('Accept Rules')
+          .setStyle(ButtonStyle.Primary)
+      )
+    ]
+  });
+}
+
+async function handleRolesDone(interaction) {
+  // Proceed to rules acceptance step
+  await interaction.update({
+    content: `🔒 **Our Community Rules**\n\nPlease click **Accept Rules** below to complete onboarding.`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('rules_accept_member')
+          .setLabel('Accept Rules')
+          .setStyle(ButtonStyle.Primary)
+      )
+    ]
+  });
+}
+
+async function handleRulesAccept(interaction) {
+  const isMemberFlow = interaction.customId === 'rules_accept_member';
+  if (isMemberFlow) {
+    // Remove the intermediary role
+    await interaction.member.roles.remove(ROLE_MEMBER_UNVERIFIED).catch(console.error);
+
+    // Add full member role if not already present
+    if (interaction.member.roles.cache.has(ROLE_MEMBER)) {
+      console.log(`[rulesAccept] ${interaction.user.tag} already has full Member role`);
+    } else {
+      try {
+        await interaction.member.roles.add(ROLE_MEMBER);
+      } catch (err) {
+        console.error(`[rulesAccept] Failed to add Member role to ${interaction.user.tag}:`, err);
+        return interaction.reply({ content: '❌ Could not assign Member role. Please contact an admin.', ephemeral: true });
+      }
+    }
+
+    // Final confirmation
+    await interaction.update({ content: '✅ Welcome aboard! You now have full Member access.', components: [] });
+  } else {
+    // Affiliate flow: remove intermediary and notify mods
+    await interaction.member.roles.remove(ROLE_AFFILIATE_UNVERIFIED).catch(console.error);
+    await interaction.update({ content: '⏳ Thanks! A moderator will review your affiliate access.', components: [] });
+  }
+}
+
+
+=== handlers/modalHandlers.js ===
+// handlers/modalHandlers.js
+import { lookupAN } from '../services/actionNetwork.js';
+import {
+  ROLE_MEMBER_UNVERIFIED,
+  ROLE_PENDING,
+  ROLE_AFFILIATE_UNVERIFIED,
+  CHANNEL_RULES
+} from '../config.js';
+import {
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from 'discord.js';
+import { memberRoleMap, memberRoleLabels } from '../utils/roleMaps.js';
+
+export default {
+  name: 'InteractionCreate',
+  async execute(interaction, client) {
+    if (!interaction.isModalSubmit()) return;
+    if (interaction.customId === 'verify_email_modal') {
+      await handleVerifyEmailModal(interaction, client);
+    }
+  }
+};
+
+async function handleVerifyEmailModal(interaction, client) {
+  const email = interaction.fields.getTextInputValue('email_input').trim();
+  console.log(`[verify] ${interaction.user.tag} submitted email: ${email}`);
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const isMember = await lookupAN(email);
+
+    // Remove the "pending" role
+    await interaction.member.roles.remove(ROLE_PENDING).catch(console.error);
+
+    if (isMember) {
+      // Assign unverified member role
+      await interaction.member.roles.add(ROLE_MEMBER_UNVERIFIED).catch(console.error);
+
+      // Build select menu options
+      const options = Object.entries(memberRoleMap).map(([key]) => ({
+        label: memberRoleLabels[key],
+        value: key
+      }));
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId('pick_roles_member')
+        .setPlaceholder('Select pronouns, region & working groups…')
+        .setMinValues(0)
+        .setMaxValues(options.length)
+        .addOptions(options);
+
+      // Prepare lists
+      const pronouns = ['1️⃣ HE/HIM', '2️⃣ SHE/HER', '3️⃣ THEY/THEM', '4️⃣ ANY/ALL'];
+      const regions = ['⬆️ Northern-Delaware — New Castle County', '⬇️ Southern-Delaware — Kent or Sussex County'];
+      const groups = [
+        '🎓 YDSA — Delaware YDSA chapter members',
+        '📣 Communication Cmte — Help with communications',
+        '🎉 Membership-Engagement Cmte — Grow and engage members',
+        '📓 Political-Education Cmte — Develop education on socialism',
+        '🧾 Legislation-Tracking Cmte — Monitor Delaware laws',
+        '🔴 Red-Rabbits Cmte — Event safety and marshaling',
+        '🇵🇸 Palestine-Solidarity WG — Support Palestinian liberation',
+        '🌎 Migrant-Rights WG — Empowers and protects immigrant communities',
+        '🏳️‍🌈 Queer-Socialists WG — Empowers and protects LGBT communities',
+        '🖌️ Arts-and-Culture WG — Preserves and promotes leftist art & literature',
+        '🏘️ Housing-Justice WG — Fight for safe, affordable, and accessible housing',
+        '🤝 Mutual-Aid WG — Sharing resources and fostering collective care'
+      ];
+
+      const content = [
+        '✅ **Verified!** You’re a DSA member.',
+        '',
+        'Customize your profile by choosing from the menu below to select the roles that best represent you and help tailor your journey in our community:',
+        '',
+        '---',
+        '**Set Your Pronouns**',
+        ...pronouns,
+        '',
+        '---',
+        '**Choose Your Identity & Interests**',
+        ...regions,
+        ...groups,
+        '',
+        'Use the menu below to make your selections.',
+        ''
+      ].join('\n');
+
+      // Add both menu and Done button
+      await interaction.editReply({
+        content,
+        components: [
+          new ActionRowBuilder().addComponents(menu),
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('roles_done')
+              .setLabel('Done')
+              .setStyle(ButtonStyle.Primary)
+          )
+        ]
+      });
+    } else {
+      // Affiliate flow
+      await interaction.member.roles.add(ROLE_AFFILIATE_UNVERIFIED).catch(console.error);
+      const rulesChannel = client.channels.cache.get(CHANNEL_RULES);
+      await interaction.editReply({
+        content: `ℹ️ Email not found in our member database. You've been assigned as a chapter affiliate.\n\nPlease visit ${rulesChannel} to accept our rules and wait for moderator approval.`
+      });
+    }
+  } catch (error) {
+    console.error('[verify] lookupAN error:', error);
+    const msg = error.message.startsWith('Invalid email')
+      ? `❌ ${error.message}. Please enter a valid address.`
+      : '❌ Verification error. Please try again or contact an admin.';
+    await interaction.editReply({ content: msg });
+  }
+}
+
+
+=== handlers/selectMenuHandlers.js ===
+/**
+ * Main entry point for handling select menu interactions
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ * @param {import('discord.js').Client} client 
+ */
+export async function handleSelectMenus(interaction, client) {
+    console.log(`[select] ${interaction.customId} by ${interaction.user.tag}`);
+    const handlerMap = {
+      'pick_roles_member':    handleMemberRoleSelect,
+      'pick_roles_affiliate': handleAffiliateRoleSelect
+    };
+    const handler = handlerMap[interaction.customId];
+    if (!handler) {
+      console.warn(`[select] No handler for ${interaction.customId}`);
+      return interaction.reply({ content: '❌ Unexpected menu—please contact an admin.', ephemeral: true });
+    }
+    try {
+      await handler(interaction, client);
+    } catch (err) {
+      console.error(`[select] Error in ${interaction.customId}:`, err);
+      if (!interaction.replied) {
+        await interaction.reply({ content: '❌ Error updating roles—see logs.', ephemeral: true });
+      }
+    }
+   }
+
+/**
+ * Handle member role selection
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ * @param {import('discord.js').Client} client 
+ */
+async function handleMemberRoleSelect(interaction, client) {
+  try {
+    const { memberRoleMap } = await import('../utils/roleMaps.js');
+    const selected = interaction.values;
+    
+    // Get all manageable roles defined in the map
+    const allRoleIds = Object.values(memberRoleMap);
+    const managedRoles = interaction.member.roles.cache.filter(role => 
+      allRoleIds.includes(role.id)
+    );
+    
+    // Remove previously selected roles that aren't in the current selection
+    await interaction.member.roles.remove(managedRoles);
+    
+    // Add the newly selected roles
+    const rolesToAdd = selected.map(key => memberRoleMap[key]).filter(Boolean);
+    if (rolesToAdd.length > 0) {
+      await interaction.member.roles.add(rolesToAdd);
+    }
+    
+    await interaction.reply({
+      content: '✅ Your roles have been updated!',
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error('Error updating member roles:', error);
+    await interaction.reply({
+      content: '❌ Failed to update roles. Please try again or contact an admin.',
+      ephemeral: true
+    });
+  }
+}
+
+/**
+ * Handle affiliate role selection
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ * @param {import('discord.js').Client} client 
+ */
+async function handleAffiliateRoleSelect(interaction, client) {
+  try {
+    const { affiliateRoleMap } = await import('../utils/roleMaps.js');
+    const selected = interaction.values;
+    
+    // Get all manageable roles defined in the map
+    const allRoleIds = Object.values(affiliateRoleMap);
+    const managedRoles = interaction.member.roles.cache.filter(role => 
+      allRoleIds.includes(role.id)
+    );
+    
+    // Remove previously selected roles that aren't in the current selection
+    await interaction.member.roles.remove(managedRoles);
+    
+    // Add the newly selected roles
+    const rolesToAdd = selected.map(key => affiliateRoleMap[key]).filter(Boolean);
+    if (rolesToAdd.length > 0) {
+      await interaction.member.roles.add(rolesToAdd);
+    }
+    
+    await interaction.reply({
+      content: '✅ Your affiliate roles have been updated!',
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error('Error updating affiliate roles:', error);
+    await interaction.reply({
+      content: '❌ Failed to update roles. Please try again or contact an admin.',
+      ephemeral: true
+    });
+  }
+}
+
+=== index.js ===
+import { Client, GatewayIntentBits, Partials, Collection } from 'discord.js';
+import { TOKEN } from './config.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { globby } from 'globby';
+
+// Determine __dirname in ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Initialize the Discord client
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions
+  ],
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction
+  ]
+});
+
+// Dynamic command loading
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+for (const file of commandFiles) {
+  try {
+    const filePath = path.join(commandsPath, file);
+    const fileURL = pathToFileURL(filePath).href;
+    const module = await import(fileURL);
+    const cmd = module.default || module;
+    if (cmd.data && cmd.execute) {
+      client.commands.set(cmd.data.name, cmd);
+      console.log(`Loaded command: ${cmd.data.name}`);
+    } else {
+      console.warn(`Skipping "${file}": missing data or execute export`);
+    }
+  } catch (error) {
+    console.error(`Error loading command "${file}":`, error);
+  }
+}
+
+// Dynamic event loading
+const eventPattern = path.join(__dirname, 'events/*.js');
+const eventFiles = await globby(eventPattern);
+for (const filePath of eventFiles) {
+  try {
+    const fileUrl = pathToFileURL(filePath).href;
+    const { default: evt } = await import(fileUrl);
+    if (evt.once) {
+      client.once(evt.name, (...args) => evt.execute(...args, client));
+    } else {
+      client.on(evt.name, (...args) => evt.execute(...args, client));
+    }
+    console.log(`Registered event: ${evt.name}`);
+  } catch (error) {
+    console.error(`Error loading event from ${filePath}:`, error);
+  }
+}
+
+// Global error handler
+process.on('unhandledRejection', error => {
+  console.error('Unhandled promise rejection:', error);
+});
+
+// Log in to Discord
+client.login(TOKEN).catch(err => {
+  console.error('Failed login:', err);
+  process.exit(1);
+});
+
+
+=== package.json ===
+{
+  "name": "dsa-onboarding-bot",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0",
+    "fs-extra": "^11.3.0",
+    "globby": "^14.1.0",
+    "joi": "^17.13.3",
+    "replace-in-file": "^8.3.0"
+  }
+}
+
+
+=== refactor.js ===
+#!/usr/bin/env node
+/**
+ * refactor.js
+ *
+ * Run in your project root:
+ *   npm install replace-in-file globby fs-extra
+ *   node refactor.js
+ */
+
+import { globby } from 'globby';
+import { replaceInFile as replace } from 'replace-in-file';
+import fs from 'fs-extra';
+import path from 'path';
+
+async function run() {
+  // 1. Standardize all commands to use named exports (data + execute)
+  const cmdFiles = await globby('commands/**/*.js');
+  for (const file of cmdFiles) {
+    // 1a. Replace `export default { data:` with `export const data =`
+    await replace({
+      files: file,
+      from: /export\s+default\s*{\s*data\s*:/,
+      to: 'export const data ='
+    });
+    // 1b. Convert default execute method into a named function
+    await replace({
+      files: file,
+      from: /export\s+default\s*{[\s\S]*?execute\s*:\s*(async\s+function)?\s*\(([\s\S]*?)\)\s*{([\s\S]*?)}\s*};?/m,
+      to: 'export async function execute($2) {$3}'
+    });
+  }
+
+  // 2. Replace direct process.env destructuring with config.js imports
+  const envFiles = await globby([
+    'commands/**/*.js',
+    'handlers/**/*.js',
+    'services/**/*.js'
+  ]);
+  for (const file of envFiles) {
+    await replace({
+      files: file,
+      from: /const\s*{\s*([A-Z0-9_,\s]+)\s*}\s*=\s*process\.env\s*;\s*/g,
+      to: (match, vars) => {
+        const imports = vars
+          .split(',')
+          .map(v => v.trim())
+          .join(', ');
+        return `import { ${imports} } from '../config.js';\n`;
+      }
+    });
+  }
+
+  // 3. Create utils/logger.js
+  const loggerPath = path.join('utils', 'logger.js');
+  await fs.ensureDir(path.dirname(loggerPath));
+  await fs.writeFile(
+    loggerPath,
+    `import { LOG_CHANNEL } from '../config.js';
+
+export async function log(guild, type, message) {
+  if (!LOG_CHANNEL) return;
+  try {
+    const ch = await guild.channels.fetch(LOG_CHANNEL);
+    if (ch?.isTextBased()) {
+      const emoji = type === 'error' ? '❌' : '✅';
+      await ch.send(\`\${emoji} **\${type.toUpperCase()}**: \${message}\`);
+    }
+  } catch (e) {
+    console.error('Logger failed:', e);
+  }
+}
+`
+  );
+
+  // 4. Create utils/withErrorHandler.js
+  const wehPath = path.join('utils', 'withErrorHandler.js');
+  await fs.writeFile(
+    wehPath,
+    `import { log } from './logger.js';
+
+export function withErrorHandler(fn) {
+  return async function(interaction, client) {
+    try {
+      await fn(interaction, client);
+    } catch (err) {
+      console.error('Handler error:', err);
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: '❌ There was an error. Please try again later.', ephemeral: true }).catch(()=>{});
+      } else {
+        await interaction.reply({ content: '❌ There was an error. Please try again later.', ephemeral: true }).catch(()=>{});
+      }
+      await log(interaction.guild, 'error', err.message);
+    }
+  };
+}
+`
+  );
+
+  // 5. Inject Joi-based email validation into services/actionNetwork.js
+  const anPath = 'services/actionNetwork.js';
+  if (await fs.pathExists(anPath)) {
+    await replace({
+      files: anPath,
+      from: /import axios from 'axios';/,
+      to: `import axios from 'axios';
+import Joi from 'joi';
+const emailSchema = Joi.string().email().required();`
+    });
+    await replace({
+      files: anPath,
+      from: /if \(!email \|\| typeof email !== 'string'\)/,
+      to: `{
+  const { error } = emailSchema.validate(email);
+  if (error) {
+    throw new Error('Invalid email: ' + error.message);
+  }
+}`
+    });
+  }
+
+  // 6. Update index.js to dynamically load events
+  const indexJs = 'index.js';
+  if (await fs.pathExists(indexJs)) {
+    await replace({
+      files: indexJs,
+      from: /\/\/ Import and register events dynamically or manually as before[\s\S]*$/,
+      to: `// Dynamic event loading
+import { globby } from 'globby';
+const eventFiles = await globby('events/*.js');
+for (const file of eventFiles) {
+  const { default: evt } = await import(\`file://\${file}\`);
+  if (evt.once) {
+    client.once(evt.name, (...args) => evt.execute(...args));
+  } else {
+    client.on(evt.name, (...args) => evt.execute(...args));
+  }
+}
+
+// start the bot
+process.on('unhandledRejection', error => {
+  console.error('Unhandled promise rejection:', error);
+});
+client.login(TOKEN).catch(err => {
+  console.error('Failed login:', err);
+  process.exit(1);
+});`
+    });
+  }
+
+  console.log('✅ Refactoring complete! Please review any conflicts and adjust paths as needed.');
+}
+
+run().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
+
+
+=== services/actionNetwork.js ===
+// services/actionNetwork.js
+import axios from 'axios';
+import Joi from 'joi';
+const emailSchema = Joi.string().email().required();
+import { AN_TOKEN } from '../config.js';
+
+// Simple rate limiting
+const API_CALLS = [];
+const MAX_CALLS_PER_MINUTE = 30;
+const MINUTE = 60 * 1000;
+
+function canMakeAPICall() {
+  const now = Date.now();
+  const recent = API_CALLS.filter(ts => now - ts < MINUTE);
+  API_CALLS.length = 0;
+  API_CALLS.push(...recent);
+  return API_CALLS.length < MAX_CALLS_PER_MINUTE;
+}
+
+function recordAPICall() {
+  API_CALLS.push(Date.now());
+}
+
+/**
+ * Look up an email in Action Network with rate limiting
+ * @param {string} email
+ * @param {number} retries
+ * @returns {Promise<boolean>}
+ */
+export async function lookupAN(email, retries = 2) {
+  // 1) Basic type check
+  if (!email || typeof email !== 'string') {
+    throw new Error('Invalid email parameter');
+  }
+    // Basic presence/type check
+    if (!email || typeof email !== 'string') {
+      throw new Error('Invalid email parameter');
+    }
+    // Joi email validation
+    const { error } = emailSchema.validate(email);
+    if (error) {
+      throw new Error('Invalid email: ' + error.message);
+    }
+
+  // Rate limit
+  if (!canMakeAPICall()) {
+    if (retries > 0) {
+      await new Promise(res => setTimeout(res, 2000));
+      return lookupAN(email, retries - 1);
+    }
+    throw new Error('Rate limit exceeded. Please try again in a minute.');
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const filter    = encodeURIComponent(`email_address eq '${cleanEmail}'`);
+  const url       = `https://actionnetwork.org/api/v2/people?filter=${filter}`;
+
+  try {
+    recordAPICall();
+    const { data } = await axios.get(url, {
+      headers: { 'OSDI-API-Token': AN_TOKEN },
+      timeout: 10000
+    });
+
+    const people = data._embedded?.['osdi:people'] || [];
+    return people.some(p =>
+      p.custom_fields?.actionkit_is_member_in_good_standing === "True"
+    );
+  } catch (err) {
+    // 429 retry
+    if (err.response?.status === 429 && retries > 0) {
+      const wait = Number(err.response.headers['retry-after'] || 5) * 1000;
+      await new Promise(res => setTimeout(res, wait));
+      return lookupAN(email, retries - 1);
+    }
+    // API responded with error
+    if (err.response) {
+      console.error(`AN API error (${err.response.status}):`, err.response.data);
+      throw new Error(`Membership verification failed (${err.response.status}): ${err.response.data?.error || 'Unknown error'}`);
+    }
+    // No response
+    if (err.request) {
+      console.error('AN API no response:', err.request);
+      throw new Error('No response from membership database. Please try again later.');
+    }
+    // Other
+    console.error('AN API request error:', err.message);
+    throw new Error(`Verification error: ${err.message}`);
+  }
+}
+
+
+=== utils/logger.js ===
+import { LOG_CHANNEL } from '../config.js';
+
+export async function log(guild, type, message) {
+  if (!LOG_CHANNEL) return;
+  try {
+    const ch = await guild.channels.fetch(LOG_CHANNEL);
+    if (ch?.isTextBased()) {
+      const emoji = type === 'error' ? '❌' : '✅';
+      await ch.send(`${emoji} **${type.toUpperCase()}**: ${message}`);
+    }
+  } catch (e) {
+    console.error('Logger failed:', e);
+  }
+}
+
+
+=== utils/permissionChecks.js ===
+// utils/permissionChecks.js
+import { PermissionsBitField } from 'discord.js';
+
+/**
+ * Ensures the bot has permission to manage roles in the guild,
+ * and returns the bot's highest role position for hierarchy checks.
+ * @param {import('discord.js').Guild} guild
+ * @returns {Promise<number>} The position of the bot's highest role.
+ * @throws {Error} If the bot lacks Manage Roles permission.
+ */
+export async function ensureBotHasRolePermissions(guild) {
+  // Fetch the bot as a GuildMember
+  const botMember = await guild.members.fetch(guild.client.user.id);
+
+  // Check that the bot has the Manage Roles permission
+  if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    throw new Error('Bot lacks required permission: Manage Roles');
+  }
+
+  // Return the position of the bot's highest role for hierarchy comparisons
+  return botMember.roles.highest.position;
+}
+
+
+=== utils/roleManager.js ===
+// utils/roleManager.js
+import { PermissionsBitField } from 'discord.js';
+
+/**
+ * Safely add or remove a role from a guild member, with retries and hierarchy checks.
+ * @param {import('discord.js').GuildMember} member
+ * @param {string} roleId – The ID of the role to modify
+ * @param {'add'|'remove'} operation – Whether to add or remove the role
+ * @param {number} maxRetries – How many times to retry on transient errors
+ * @returns {Promise<boolean>} True if the operation succeeded
+ * @throws {Error} On invalid parameters, missing permissions, hierarchy violations, or permanent failures
+ */
+export async function safeRoleAssignment(member, roleId, operation = 'add', maxRetries = 3) {
+  const guild = member.guild;
+
+  // Fetch the role and validate it exists
+  const role = await guild.roles.fetch(roleId).catch(() => null);
+  if (!role) {
+    throw new Error(`Role with ID ${roleId} does not exist`);
+  }
+
+  // Ensure the bot has Manage Roles permission
+  const botMember = await guild.members.fetch(guild.client.user.id);
+  if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    throw new Error('Bot lacks required permission: Manage Roles');
+  }
+
+  // Check role hierarchy: bot cannot modify roles at or above its highest role
+  if (role.position >= botMember.roles.highest.position) {
+    throw new Error(`Cannot modify role ${role.name}: positioned higher than bot's roles`);
+  }
+
+  let attempts = 0;
+  while (attempts < maxRetries) {
+    try {
+      if (operation === 'add') {
+        await member.roles.add(role);
+      } else if (operation === 'remove') {
+        await member.roles.remove(role);
+      } else {
+        throw new Error(`Invalid operation: ${operation}`);
+      }
+      return true; // success
+    } catch (error) {
+      attempts++;
+      console.error(`Attempt ${attempts}/${maxRetries} failed to ${operation} role ${role.name}:`, error);
+
+      // If rate-limited or transient, wait and retry
+      if ([429, 10008, 10029].includes(error.code)) {
+        await new Promise(res => setTimeout(res, 1000 * attempts));
+        continue;
+      }
+
+      // For other errors, do not retry
+      throw error;
+    }
+  }
+
+  throw new Error(`Failed to ${operation} role ${role.name} after ${maxRetries} attempts`);
+}
+
+
+=== utils/roleMaps.js ===
+// Import all role IDs from config
+import {
+  ROLE_PRONOUN_HE,
+  ROLE_PRONOUN_SHE,
+  ROLE_PRONOUN_THEY,
+  ROLE_PRONOUN_ANY,
+  ROLE_NORTH,
+  ROLE_SOUTH,
+  ROLE_COMMUNICATIONS,
+  ROLE_MEMBERSHIP_ENGAGEMENT,
+  ROLE_POLITICAL_EDUCATION,
+  ROLE_LEGISLATION_TRACKING,
+  ROLE_RED_RABBITS,
+  ROLE_PALESTINE,
+  ROLE_MIGRANT_RIGHTS,
+  ROLE_QUEER_SOCIALISTS,
+  ROLE_ARTS_CULTURE,
+  ROLE_HOUSING_JUSTICE,
+  ROLE_MUTUAL_AID,
+  ROLE_YDSA,
+  ROLE_NON_DSA_MEMBER,
+  ROLE_DSA_NON_DE
+} from '../config.js';
+
+/**
+ * Role map for DSA members
+ * Key: internal role identifier, Value: Discord role ID
+ */
+export const memberRoleMap = {
+  // Pronouns
+  pronoun_he: ROLE_PRONOUN_HE,
+  pronoun_she: ROLE_PRONOUN_SHE,
+  pronoun_they: ROLE_PRONOUN_THEY,
+  pronoun_any: ROLE_PRONOUN_ANY,
+  
+  // Regions
+  region_north: ROLE_NORTH,
+  region_south: ROLE_SOUTH,
+  
+  // Committees and Working Groups
+  communications: ROLE_COMMUNICATIONS,
+  membership_engagement: ROLE_MEMBERSHIP_ENGAGEMENT,
+  political_education: ROLE_POLITICAL_EDUCATION,
+  legislation_tracking: ROLE_LEGISLATION_TRACKING,
+  red_rabbits: ROLE_RED_RABBITS,
+  palestine: ROLE_PALESTINE,
+  migrant_rights: ROLE_MIGRANT_RIGHTS,
+  queer_socialists: ROLE_QUEER_SOCIALISTS,
+  arts_culture: ROLE_ARTS_CULTURE,
+  housing_justice: ROLE_HOUSING_JUSTICE,
+  mutual_aid: ROLE_MUTUAL_AID,
+  ydsa: ROLE_YDSA
+};
+
+/**
+ * Display labels for member roles
+ */
+export const memberRoleLabels = {
+  // Pronouns
+  pronoun_he: "HE/HIM",
+  pronoun_she: "SHE/HER",
+  pronoun_they: "THEY/THEM",
+  pronoun_any: "ANY/ALL",
+  
+  // Regions
+  region_north: "Northern-DE",
+  region_south: "Southern-DE",
+  
+  // Committees and Working Groups
+  communications: "Communications Cmte",
+  membership_engagement: "Membership Engagement Cmte",
+  political_education: "Political Education Cmte",
+  legislation_tracking: "Legislation Tracking Cmte",
+  red_rabbits: "Red Rabbits Cmte",
+  palestine: "Palestine Solidarity WG",
+  migrant_rights: "Migrant Rights WG",
+  queer_socialists: "Queer Socialists WG",
+  arts_culture: "Arts & Culture WG",
+  housing_justice: "Housing Justice WG",
+  mutual_aid: "Mutual Aid WG",
+  ydsa: "YDSA"
+};
+
+/**
+ * Role map for affiliates (non-members)
+ * More limited than members
+ */
+export const affiliateRoleMap = {
+  // Pronouns
+  pronoun_he: ROLE_PRONOUN_HE,
+  pronoun_she: ROLE_PRONOUN_SHE,
+  pronoun_they: ROLE_PRONOUN_THEY,
+  pronoun_any: ROLE_PRONOUN_ANY,
+  
+  // Affiliate-specific tags
+  affiliate_non_dsa: ROLE_NON_DSA_MEMBER,
+  affiliate_dsa_non_de: ROLE_DSA_NON_DE
+};
+
+/**
+ * Display labels for affiliate roles
+ */
+export const affiliateRoleLabels = {
+  // Pronouns
+  pronoun_he: "HE/HIM",
+  pronoun_she: "SHE/HER",
+  pronoun_they: "THEY/THEM",
+  pronoun_any: "ANY/ALL",
+  
+  // Affiliate-specific tags
+  affiliate_non_dsa: "Non-DSA Member",
+  affiliate_dsa_non_de: "DSA Member (Non-DE)"
+};
+
+=== utils/sendOnboarding.js ===
+// utils/sendOnboarding.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { CHANNEL_ONBOARDING } from '../config.js';
+
+export async function sendOnboarding(member) {
+  try {
+    // Fetch the onboarding channel from the guild
+    const channel = await member.guild.channels.fetch(CHANNEL_ONBOARDING);
+    if (!channel?.isTextBased()) {
+      console.error('Onboarding channel not found or not text-based');
+      return null;
+    }
+
+    // Send the onboarding prompt into the channel, mention the new member
+    const message = await channel.send({
+      content: `👋 Welcome <@${member.id}>! Are you a current **Delaware DSA member** or a **chapter-affiliate**?`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('verify_start')
+            .setLabel('I am a member')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId('affiliate_start')
+            .setLabel('I’m an affiliate')
+            .setStyle(ButtonStyle.Secondary)
+        )
+      ]
+    });
+
+    console.log(`✅ Onboarding sent in #onboarding for ${member.user.tag}`);
+    return message;
+  } catch (error) {
+    console.error('Error sending onboarding to channel:', error);
+    return null;
+  }
+}
+
+
+=== utils/withErrorHandler.js ===
+import { log } from './logger.js';
+
+export function withErrorHandler(fn) {
+  return async function(interaction, client) {
+    try {
+      await fn(interaction, client);
+    } catch (err) {
+      console.error('Handler error:', err);
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: '❌ There was an error. Please try again later.', ephemeral: true }).catch(()=>{});
+      } else {
+        await interaction.reply({ content: '❌ There was an error. Please try again later.', ephemeral: true }).catch(()=>{});
+      }
+      await log(interaction.guild, 'error', err.message);
+    }
+  };
+}
+

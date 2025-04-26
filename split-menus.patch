@@ -1,0 +1,42 @@
+--- a/handlers/modalHandlers.js
++++ b/handlers/modalHandlers.js
+@@ async function handleVerifyEmailModal(interaction, client) {
+-    if (isMember) {
+-      // Assign unverified member role
+-      await interaction.member.roles.add(ROLE_MEMBER_UNVERIFIED).catch(console.error);
+-
+-      // Build select menu options
+-      const options = Object.entries(memberRoleMap).map(([key]) => ({
+-        label: memberRoleLabels[key],
+-        value: key
+-      }));
+-
+-      const menu = new StringSelectMenuBuilder()
+-        .setCustomId('pick_roles_member')
+-        .setPlaceholder('Select pronouns, region & working groups…')
+-        .setMinValues(0)
+-        .setMaxValues(options.length)
+-        .addOptions(options);
++    if (isMember) {
++      // Assign unverified member role
++      await interaction.member.roles.add(ROLE_MEMBER_UNVERIFIED).catch(console.error);
++
++      // Stage 1: Send _only_ pronouns menu
++      const pronouns = [
++        { label: 'HE/HIM', value: 'pronoun_he' },
++        { label: 'SHE/HER', value: 'pronoun_she' },
++        { label: 'THEY/THEM', value: 'pronoun_they' },
++        { label: 'ANY/ALL', value: 'pronoun_any' }
++      ];
++
++      const pronounMenu = new StringSelectMenuBuilder()
++        .setCustomId('pick_pronouns')
++        .setPlaceholder('Select your pronouns…')
++        .setMinValues(1)
++        .setMaxValues(1)
++        .addOptions(pronouns);
++
++      await interaction.editReply({
++        content: '✅ **Verified!** You’re a DSA member.\n\n**Step 1:** Set your pronouns:',
++        components: [new ActionRowBuilder().addComponents(pronounMenu)]
++      });
