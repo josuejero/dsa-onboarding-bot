@@ -1,0 +1,25 @@
+{
+  "name": "dsa-onboarding-bot",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0",
+    "fs-extra": "^11.3.0",
+    "globby": "^14.1.0",
+    "joi": "^17.13.3",
+    "replace-in-file": "^8.3.0",
+    "sqlit": "^2.0.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}

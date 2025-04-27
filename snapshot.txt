@@ -1,0 +1,4858 @@
+Project directory structure:
+├── .env
+├── .gitignore
+├── commands
+│   ├── confirmAffiliate.js
+│   ├── help.js
+│   ├── onboard.js
+│   ├── roles.js
+│   ├── rules.js
+│   └── verify.js
+├── config
+│   ├── defaults.js
+│   ├── errorMessages.js
+│   └── validation.js
+├── config.js
+├── data
+│   └── dedsa.db
+├── db
+│   ├── index.js
+│   └── models
+│       ├── audit.js
+│       ├── session.js
+│       └── user.js
+├── deploy-commands.js
+├── env.js
+├── events
+│   ├── guildMemberAdd.js
+│   ├── interactionCreate.js
+│   ├── messageReactionAdd.js
+│   └── ready.js
+├── handlers
+│   ├── adminApprove.js
+│   ├── adminConfirmAffiliate.js
+│   ├── adminDeny.js
+│   ├── affiliateStart.js
+│   ├── buttonHandlers.js
+│   ├── helpButtons.js
+│   ├── modalHandlers.js
+│   ├── pronounsAffiliate.js
+│   ├── pronounsMember.js
+│   ├── rolesAffiliate.js
+│   ├── rolesMember.js
+│   ├── rulesAccept.js
+│   ├── selectMenuHandlers.js
+│   └── verifyStart.js
+├── index.js
+├── middleware
+│   └── inputSanitizer.js
+├── package.json
+├── runtimeValidation.js
+├── services
+│   ├── actionNetwork.js
+│   ├── cache.js
+│   └── securityAudit.js
+├── snapshot.cjs
+└── utils
+    ├── componentFactory.js
+    ├── errorTypes.js
+    ├── handlerRegistry.js
+    ├── logger.js
+    ├── permissionChecks.js
+    ├── rateLimit.js
+    ├── roleManager.js
+    ├── roleMaps.js
+    ├── sendOnboarding.js
+    ├── sessionStore.js
+    └── withErrorHandler.js
+
+
+=== .env ===
+DISCORD_TOKEN=MTM2NTEwMjQ2MDQ3NzI0MzQzMg.G45fj5.WQOZQMzqo_sZ9NoCy_MKmYhN_8rzgvXrLI1bGY
+CLIENT_ID=1365102460477243432
+GUILD_ID=1287535866629193748
+AN_TOKEN=573aaf64ec5c6cba31bcd05336beec16
+
+CHANNEL_ONBOARDING=1365106392574328943
+CHANNEL_RULES=1365106561936130048
+MESSAGE_RULES=1365106658346270800
+LOG_CHANNEL=1306743357913174126
+
+
+ROLE_PENDING=1291078682923896862
+ROLE_MEMBER_UNVERIFIED=1365105914515947631
+ROLE_AFFILIATE_UNVERIFIED=1365106007847731262
+ROLE_RULES_ACCEPTED=1365106040068116511
+ROLE_MEMBER=1292577006600327230
+ROLE_AFFILIATE=1292577109922943097
+
+ROLE_PRONOUN_HE=1303843869288566784           
+ROLE_PRONOUN_SHE=1303843870043410475          
+ROLE_PRONOUN_THEY=1303843871276531794
+ROLE_PRONOUN_ANY=1303843872272056320
+
+ROLE_NORTH=1314357957990809702                 
+ROLE_SOUTH=1314358356294504458   
+
+ROLE_COMMUNICATIONS=1292577178021527673
+ROLE_MEMBERSHIP_ENGAGEMENT=1292577287157584005
+ROLE_POLITICAL_EDUCATION=1360764334103462129
+ROLE_LEGISLATION_TRACKING=1306789749540917329
+ROLE_RED_RABBITS=1308176694326198334
+ROLE_PALESTINE=1292577384326889685
+ROLE_MIGRANT_RIGHTS=1323437471698128968
+ROLE_QUEER_SOCIALISTS=1338193223172231198
+ROLE_ARTS_CULTURE=1324774604618858496
+ROLE_HOUSING_JUSTICE=1358970432358711457
+ROLE_MUTUAL_AID=1359236135955599430
+ROLE_YDSA=1292577439322734705
+
+ROLE_NON_DSA_MEMBER=1355526942727733408
+ROLE_DSA_NON_DE=1355527100823769138
+
+
+NODE_ENV=development
+
+
+=== commands/confirmAffiliate.js ===
+import { PermissionsBitField } from 'discord.js';
+
+import { ROLE_AFFILIATE_UNVERIFIED, ROLE_AFFILIATE } from '../config.js';
+export const data = {
+  name: 'confirm-affiliate',
+  description: 'Confirm a user as chapter affiliate',
+  options: [
+    {
+      name: 'user',
+      description: 'User to confirm',
+      type: 6, // USER
+      required: true
+    }
+  ]
+};
+
+export async function execute(interaction) {
+  // Permission check
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return interaction.reply({ content: '❌ You lack Manage Roles permission.', ephemeral: true });
+  }
+
+  const targetUser = interaction.options.getUser('user');
+  if (!targetUser) {
+    return interaction.reply({ content: '❌ Please mention a valid user.', ephemeral: true });
+  }
+
+  try {
+    // Fetch guild member
+    const member = await interaction.guild.members.fetch(targetUser.id);
+
+    // Remove "unverified affiliate" and add "affiliate"
+    await member.roles.remove(ROLE_AFFILIATE_UNVERIFIED).catch(() => {});
+    await member.roles.add(ROLE_AFFILIATE);
+
+    // Confirm to moderator
+    await interaction.reply({ content: `✅ ${targetUser.tag} is now a chapter affiliate.`, ephemeral: true });
+
+    // DM the user
+    await member.send('✅ You now have **chapter-affiliate** access. Welcome!').catch(console.error);
+  } catch (error) {
+    console.error('Error confirming affiliate:', error);
+    return interaction.reply({ content: '❌ Failed to confirm affiliate. Please try again or contact an admin.', ephemeral: true });
+  }
+}
+
+
+=== commands/help.js ===
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('help')
+  .setDescription('Get help with bot commands');
+
+export async function execute(interaction, client) {
+  const embed = new EmbedBuilder()
+    .setTitle('🤖 DSA Discord Bot Help')
+    .setDescription('Here are the available commands for this server:')
+    .setColor('#e63946')
+    .addFields([
+      {
+        name: '/verify',
+        value: 'Start the verification process to confirm your DSA membership status'
+      },
+      {
+        name: '/roles',
+        value: 'Open the role-selection menu to update your pronouns, region, and working groups'
+      },
+      {
+        name: '/rules',
+        value: 'Review the server rules'
+      },
+      {
+        name: '/help',
+        value: 'Show this help message'
+      }
+    ])
+    .setFooter({
+      text: 'Delaware DSA',
+      iconURL: interaction.guild.iconURL() || undefined
+    });
+  
+  // Add moderator commands if user has the right permissions
+  if (interaction.member.permissions.has('ManageRoles')) {
+    embed.addFields([
+      {
+        name: '🔧 Moderator Commands',
+        value: [
+          '`/onboard` - Send onboarding message to a user',
+          '`/confirm-affiliate` - Confirm a user as a chapter affiliate'
+        ].join('\n')
+      }
+    ]);
+  }
+  
+  await interaction.reply({
+    embeds: [embed],
+    ephemeral: true
+  });
+}
+
+=== commands/onboard.js ===
+// commands/onboard.js
+import { PermissionsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+
+export const data = {
+  name: 'onboard',
+  description: 'Trigger onboarding for a user',
+  options: [
+    { name: 'user', description: 'User to onboard', type: 6, required: true }
+  ]
+};
+
+export async function execute(interaction) {
+  // 1) Acknowledge so we can later send an ephemeral follow-up
+  await interaction.deferReply({ ephemeral: true });
+
+  // 2) Permission guard
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+    return interaction.deleteReply();
+  }
+
+  // 3) Fetch the target member
+  const user = interaction.options.getUser('user');
+  if (!user) {
+    return interaction.deleteReply();
+  }
+  const member = await interaction.guild.members.fetch(user.id);
+
+  // 4) Send the onboarding prompt **ephemerally** to that user
+  await interaction.followUp({
+    content: `👋 Welcome <@${member.id}>, to the Delaware DSA Discord Server!\n\n` +
+      `We're absolutely thrilled to have you join our vibrant community.\n\n` +
+      `Are you a current **Delaware DSA member** or a **chapter-affiliate**?`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('verify_start')
+          .setLabel('I am a member')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId('affiliate_start')
+          .setLabel('I’m an affiliate')
+          .setStyle(ButtonStyle.Secondary)
+      )
+    ],
+    ephemeral: true
+  });
+}
+
+
+=== commands/roles.js ===
+// commands/help.js
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('help')
+  .setDescription('Get help with bot commands')
+  .addStringOption(option => 
+    option.setName('command')
+      .setDescription('Get specific help for a command')
+      .setRequired(false)
+      .addChoices(
+        { name: 'verify', value: 'verify' },
+        { name: 'roles', value: 'roles' },
+        { name: 'rules', value: 'rules' },
+        { name: 'onboard', value: 'onboard' },
+        { name: 'confirm-affiliate', value: 'confirm-affiliate' }
+      )
+  );
+
+export async function execute(interaction, client) {
+  // Check if user is requesting specific command help
+  const specificCommand = interaction.options.getString('command');
+  
+  if (specificCommand) {
+    return await showCommandHelp(interaction, specificCommand);
+  }
+  
+  // General help embed
+  const embed = new EmbedBuilder()
+    .setTitle('🤖 DSA Discord Bot Help')
+    .setDescription('Here are the available commands for this server:')
+    .setColor('#e63946')
+    .addFields([
+      {
+        name: '/verify',
+        value: 'Start the verification process to confirm your DSA membership status'
+      },
+      {
+        name: '/roles',
+        value: 'Open the role-selection menu to update your pronouns, region, and working groups'
+      },
+      {
+        name: '/rules',
+        value: 'Review the server rules'
+      },
+      {
+        name: '/help',
+        value: 'Show this help message'
+      }
+    ])
+    .setFooter({
+      text: 'Delaware DSA',
+      iconURL: interaction.guild.iconURL() || undefined
+    });
+  
+  // Add moderator commands if user has the right permissions
+  if (interaction.member.permissions.has('ManageRoles')) {
+    embed.addFields([
+      {
+        name: '🔧 Moderator Commands',
+        value: [
+          '`/onboard` - Send onboarding message to a user',
+          '`/confirm-affiliate` - Confirm a user as a chapter affiliate'
+        ].join('\n')
+      }
+    ]);
+  }
+  
+  // Create interactive buttons for quick command access
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('help_verify')
+        .setLabel('Verify')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('help_roles')
+        .setLabel('Roles')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('help_rules')
+        .setLabel('Rules')
+        .setStyle(ButtonStyle.Primary)
+    );
+  
+  await interaction.reply({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
+}
+
+// Function to show detailed help for a specific command
+async function showCommandHelp(interaction, command) {
+  let embed;
+  
+  switch (command) {
+    case 'verify':
+      embed = new EmbedBuilder()
+        .setTitle('Help: /verify')
+        .setColor('#e63946')
+        .setDescription('Start the verification process to confirm your DSA membership status.')
+        .addFields([
+          {
+            name: 'How It Works',
+            value: 'This command opens a form where you can enter your Action Network email to verify your membership status.'
+          },
+          {
+            name: 'After Verification',
+            value: 'If your email is found in our database, you\'ll get full member access. Otherwise, you\'ll be assigned as a chapter affiliate pending moderator approval.'
+          },
+          {
+            name: 'Need Help?',
+            value: 'If you have trouble with verification, contact a moderator or steering committee member.'
+          }
+        ]);
+      break;
+    
+    case 'roles':
+      embed = new EmbedBuilder()
+        .setTitle('Help: /roles')
+        .setColor('#e63946')
+        .setDescription('Open the role-selection menu to update your pronouns, region, and working groups.')
+        .addFields([
+          {
+            name: 'How It Works',
+            value: 'This command opens a menu where you can select:' +
+              '\n• Your pronouns' +
+              '\n• Your region (Northern/Southern DE)' + 
+              '\n• Committees & working groups you want to join'
+          },
+          {
+            name: 'Saved Selections',
+            value: 'Your current roles will be pre-selected in the menu. You can add or remove roles anytime by running this command again.'
+          }
+        ]);
+      break;
+    
+    case 'rules':
+      embed = new EmbedBuilder()
+        .setTitle('Help: /rules')
+        .setColor('#e63946')
+        .setDescription('Review the server rules.')
+        .addFields([
+          {
+            name: 'How It Works',
+            value: 'This command displays the community rules for the Delaware DSA Discord server.'
+          },
+          {
+            name: 'Accepting Rules',
+            value: 'During onboarding, you\'ll need to accept the rules to gain full access to the server.'
+          }
+        ]);
+      break;
+    
+    case 'onboard':
+      // Only show if user has proper permissions
+      if (!interaction.member.permissions.has('ManageRoles')) {
+        return interaction.reply({
+          content: '❌ You don\'t have permission to use the `/onboard` command.',
+          ephemeral: true
+        });
+      }
+      
+      embed = new EmbedBuilder()
+        .setTitle('Help: /onboard')
+        .setColor('#e63946')
+        .setDescription('Send onboarding message to a user. (Moderator Only)')
+        .addFields([
+          {
+            name: 'How It Works',
+            value: 'This command sends an onboarding message to a specified user, allowing them to verify membership or register as an affiliate.'
+          },
+          {
+            name: 'Usage',
+            value: '`/onboard user:@username`'
+          }
+        ]);
+      break;
+    
+    case 'confirm-affiliate':
+      // Only show if user has proper permissions
+      if (!interaction.member.permissions.has('ManageRoles')) {
+        return interaction.reply({
+          content: '❌ You don\'t have permission to use the `/confirm-affiliate` command.',
+          ephemeral: true
+        });
+      }
+      
+      embed = new EmbedBuilder()
+        .setTitle('Help: /confirm-affiliate')
+        .setColor('#e63946')
+        .setDescription('Confirm a user as a chapter affiliate. (Moderator Only)')
+        .addFields([
+          {
+            name: 'How It Works',
+            value: 'This command confirms a user as a chapter affiliate, giving them access to affiliate-specific channels and roles.'
+          },
+          {
+            name: 'Usage',
+            value: '`/confirm-affiliate user:@username`'
+          }
+        ]);
+      break;
+    
+    default:
+      return interaction.reply({
+        content: `❌ Help for command /${command} not found.`,
+        ephemeral: true
+      });
+  }
+  
+  // Back button to return to main help menu
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('help_back')
+        .setLabel('Back to Help Menu')
+        .setStyle(ButtonStyle.Secondary)
+    );
+  
+  await interaction.reply({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
+}
+
+=== commands/rules.js ===
+// src/commands/rules.js
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+
+export const data = new SlashCommandBuilder()
+  .setName('rules')
+  .setDescription('Repost the community rules');
+
+export async function execute(interaction) {
+  const rulesEmbed = new EmbedBuilder()
+    .setTitle('📜 Community Rules')
+    .setDescription([
+      'Our **DEDSA Discord Rules** keep us safe, respectful, and energizing for everyone:',
+      '1️⃣ **Be Respectful** – Engage comradely.',
+      '2️⃣ **No Harassment** – Zero tolerance for hate speech or personal attacks.',
+      '3️⃣ **Stay On-Topic** – Keep discussions aligned with our mission.',
+      '4️⃣ **Protect Privacy** – Do not share anyone’s personal info.',
+      '5️⃣ **No Spam** – Avoid excessive messages or unsolicited links.',
+      '6️⃣ **Uphold DSA Values** – Solidarity, equality, and justice in all interactions.',
+      '',
+      'React with ✅ in the #rules channel once you’ve read and agree.'
+    ].join('\n'))
+    .setColor('Blue')
+    .setFooter({ text: 'Use /rules any time to review these.' });
+
+  await interaction.reply({
+    embeds: [rulesEmbed],
+    ephemeral: true
+  });
+}
+
+
+=== commands/verify.js ===
+// commands/verify.js
+import { SlashCommandBuilder } from 'discord.js';
+import { createEmailVerificationModal } from '../utils/componentFactory.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { registerCommandHandler } from '../utils/handlerRegistry.js';
+
+// Command definition
+export const data = new SlashCommandBuilder()
+  .setName('verify')
+  .setDescription('Verify your DSA membership by email');
+
+// Command handler
+export async function execute(interaction) {
+  try {
+    // Create the email verification modal
+    const modal = createEmailVerificationModal();
+    
+    // Show the modal to the user
+    await interaction.showModal(modal);
+    
+    // Log the interaction
+    info(interaction.guild, `Showing verify modal to ${interaction.user.tag}`);
+  } catch (err) {
+    throw new BotError(
+      `Failed to show modal for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.DISCORD_API,
+      err.code
+    );
+  }
+}
+
+// Register this command with the handler registry
+registerCommandHandler('verify', execute);
+
+=== config/defaults.js ===
+// config/defaults.js
+export const defaults = {
+  // API call rate limiting
+  API_RATE_LIMIT: {
+    development: {
+      MAX_CALLS_PER_MINUTE: 10,
+      MINUTE: 60 * 1000,
+    },
+    production: {
+      MAX_CALLS_PER_MINUTE: 30,
+      MINUTE: 60 * 1000,
+    },
+    test: {
+      MAX_CALLS_PER_MINUTE: 5,
+      MINUTE: 60 * 1000,
+    }
+  },
+  
+  // Discord rate limit values
+  DISCORD_RATE_LIMIT: {
+    MAX_RETRIES: 3,
+    RETRY_DELAY: 1000, // Base delay in ms (increases with each retry)
+  },
+  
+  // Logging level
+  LOG_LEVEL: {
+    development: 'debug',
+    production: 'info',
+    test: 'debug',
+  },
+  
+  // API Timeouts
+  API_TIMEOUT: 10000, // 10 seconds
+  
+  // Button interaction timeout
+  BUTTON_TIMEOUT: 15 * 60 * 1000, // 15 minutes
+  
+  // Debugging flags
+  DEBUG: {
+    development: true,
+    production: false,
+    test: true,
+  }
+};
+
+// Helper function to get environment-specific defaults
+export function getDefaults(nodeEnv = 'development') {
+  const env = nodeEnv in defaults.API_RATE_LIMIT ? nodeEnv : 'development';
+  
+  return {
+    API_RATE_LIMIT: defaults.API_RATE_LIMIT[env],
+    LOG_LEVEL: defaults.LOG_LEVEL[env],
+    DISCORD_RATE_LIMIT: defaults.DISCORD_RATE_LIMIT,
+    API_TIMEOUT: defaults.API_TIMEOUT,
+    BUTTON_TIMEOUT: defaults.BUTTON_TIMEOUT,
+    DEBUG: defaults.DEBUG[env],
+  };
+}
+
+=== config/errorMessages.js ===
+import { ErrorTypes } from '../utils/errorTypes.js';
+
+/**
+ * Get user-facing error message based on type and code
+ */
+export function getErrorMessage(type, code) {
+  // Default fallback message
+  const defaultMessage = '❌ There was an error processing your request. Please try again later.';
+  
+  // Type-specific messages
+  const typeMessages = {
+    [ErrorTypes.PERMISSION]: '❌ You don\'t have permission to perform this action.',
+    [ErrorTypes.API]: '❌ There was an error connecting to an external service. Please try again later.',
+    [ErrorTypes.VALIDATION]: '❌ The provided information was invalid. Please check your input and try again.',
+    [ErrorTypes.RATE_LIMIT]: '❌ Too many requests. Please wait a moment and try again.',
+    [ErrorTypes.DISCORD_API]: '❌ There was an error communicating with Discord. Please try again later.',
+    [ErrorTypes.ROLE_MANAGEMENT]: '❌ There was an error managing roles. Please contact an admin.',
+    [ErrorTypes.CONFIGURATION]: '❌ There is a configuration issue. Please notify an admin.',
+    [ErrorTypes.COMMAND]: '❌ There was an error with this command. Please try again later.',
+    [ErrorTypes.UNKNOWN]: defaultMessage
+  };
+  
+  // Specific error code messages
+  const codeMessages = {
+    // Discord API error codes
+    10008: '❌ This message no longer exists.',
+    10062: '❌ This interaction has expired.',
+    50013: '❌ I don\'t have permission to perform this action.',
+    // Custom error codes
+    'EMAIL_INVALID': '❌ Please provide a valid email address.',
+    'VERIFICATION_FAILED': '❌ Membership verification failed. Please try again or contact an admin.',
+  };
+  
+  // Return specific code message if available
+  if (code && codeMessages[code]) {
+    return codeMessages[code];
+  }
+  
+  // Return type message if available, otherwise default
+  return typeMessages[type] || defaultMessage;
+}
+
+=== config/validation.js ===
+// config/validation.js
+import Joi from 'joi';
+
+// Regex pattern for Discord IDs (17-19 digits)
+const discordIdPattern = /^\d{17,19}$/;
+
+// Schema for Discord IDs
+const discordId = Joi.string().pattern(discordIdPattern).required();
+
+// Schema for optional Discord IDs
+const optionalDiscordId = Joi.string().pattern(discordIdPattern).allow(null, '');
+
+// Create a schema for all environment variables
+export const envSchema = Joi.object({
+  // Bot configuration
+  DISCORD_TOKEN: Joi.string().required(),
+  CLIENT_ID: discordId,
+  GUILD_ID: discordId,
+  AN_TOKEN: Joi.string().required(),
+  
+  // Channels
+  CHANNEL_ONBOARDING: discordId,
+  CHANNEL_RULES: discordId,
+  MESSAGE_RULES: discordId,
+  LOG_CHANNEL: optionalDiscordId.default(null),
+  
+  // Primary roles
+  ROLE_PENDING: discordId,
+  ROLE_MEMBER_UNVERIFIED: discordId,
+  ROLE_AFFILIATE_UNVERIFIED: discordId,
+  ROLE_RULES_ACCEPTED: discordId,
+  ROLE_MEMBER: discordId,
+  ROLE_AFFILIATE: discordId,
+  
+  // Pronoun roles
+  ROLE_PRONOUN_HE: discordId,
+  ROLE_PRONOUN_SHE: discordId,
+  ROLE_PRONOUN_THEY: discordId,
+  ROLE_PRONOUN_ANY: discordId,
+  
+  // Region roles
+  ROLE_NORTH: discordId,
+  ROLE_SOUTH: discordId,
+  
+  // Committee/Working Group roles
+  ROLE_COMMUNICATIONS: discordId,
+  ROLE_MEMBERSHIP_ENGAGEMENT: discordId,
+  ROLE_POLITICAL_EDUCATION: discordId,
+  ROLE_LEGISLATION_TRACKING: discordId,
+  ROLE_RED_RABBITS: discordId,
+  ROLE_PALESTINE: discordId,
+  ROLE_MIGRANT_RIGHTS: discordId,
+  ROLE_QUEER_SOCIALISTS: discordId,
+  ROLE_ARTS_CULTURE: discordId,
+  ROLE_HOUSING_JUSTICE: discordId,
+  ROLE_MUTUAL_AID: discordId,
+  ROLE_YDSA: discordId,
+  
+  // Affiliate-specific roles
+  ROLE_NON_DSA_MEMBER: discordId,
+  ROLE_DSA_NON_DE: discordId,
+  
+  // Runtime environment
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development')
+});
+
+// Function to validate environment configuration
+export function validateEnv(env) {
+  const { error, value } = envSchema.validate(env, {
+    allowUnknown: true, // Allow extra env vars
+    abortEarly: false, // Show all validation errors at once
+  });
+  
+  if (error) {
+    const formattedErrors = error.details.map(detail => `  - ${detail.message}`).join('\n');
+    throw new Error(`Environment validation failed:\n${formattedErrors}`);
+  }
+  
+  return value;
+}
+
+=== config.js ===
+// config.js
+import validatedEnv, { defaultConfig, NODE_ENV } from './env.js';
+import { validateRuntime } from './runtimeValidation.js';
+
+// Build the single config object
+const config = {
+  NODE_ENV,
+
+  // Bot credentials
+  TOKEN:       validatedEnv.DISCORD_TOKEN,
+  CLIENT:      validatedEnv.CLIENT_ID,
+  GUILD:       validatedEnv.GUILD_ID,
+  AN_TOKEN:    validatedEnv.AN_TOKEN,
+
+  // Channels & messages
+  CHANNEL_ONBOARDING: validatedEnv.CHANNEL_ONBOARDING,
+  CHANNEL_RULES:      validatedEnv.CHANNEL_RULES,
+  MESSAGE_RULES:      validatedEnv.MESSAGE_RULES,
+  LOG_CHANNEL:        validatedEnv.LOG_CHANNEL,
+
+  // Core roles
+  ROLE_PENDING:            validatedEnv.ROLE_PENDING,
+  ROLE_MEMBER_UNVERIFIED:  validatedEnv.ROLE_MEMBER_UNVERIFIED,
+  ROLE_AFFILIATE_UNVERIFIED: validatedEnv.ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_RULES_ACCEPTED:     validatedEnv.ROLE_RULES_ACCEPTED,
+  ROLE_MEMBER:             validatedEnv.ROLE_MEMBER,
+  ROLE_AFFILIATE:          validatedEnv.ROLE_AFFILIATE,
+
+  // Pronouns, regions, committees, affiliates…
+  ROLE_PRONOUN_HE:   validatedEnv.ROLE_PRONOUN_HE,
+  ROLE_PRONOUN_SHE:  validatedEnv.ROLE_PRONOUN_SHE,
+  ROLE_PRONOUN_THEY: validatedEnv.ROLE_PRONOUN_THEY,
+  ROLE_PRONOUN_ANY:  validatedEnv.ROLE_PRONOUN_ANY,
+
+  ROLE_NORTH:        validatedEnv.ROLE_NORTH,
+  ROLE_SOUTH:        validatedEnv.ROLE_SOUTH,
+
+  ROLE_COMMUNICATIONS:       validatedEnv.ROLE_COMMUNICATIONS,
+  ROLE_MEMBERSHIP_ENGAGEMENT: validatedEnv.ROLE_MEMBERSHIP_ENGAGEMENT,
+  ROLE_POLITICAL_EDUCATION:  validatedEnv.ROLE_POLITICAL_EDUCATION,
+  ROLE_LEGISLATION_TRACKING: validatedEnv.ROLE_LEGISLATION_TRACKING,
+  ROLE_RED_RABBITS:          validatedEnv.ROLE_RED_RABBITS,
+  ROLE_PALESTINE:            validatedEnv.ROLE_PALESTINE,
+  ROLE_MIGRANT_RIGHTS:       validatedEnv.ROLE_MIGRANT_RIGHTS,
+  ROLE_QUEER_SOCIALISTS:     validatedEnv.ROLE_QUEER_SOCIALISTS,
+  ROLE_ARTS_CULTURE:         validatedEnv.ROLE_ARTS_CULTURE,
+  ROLE_HOUSING_JUSTICE:      validatedEnv.ROLE_HOUSING_JUSTICE,
+  ROLE_MUTUAL_AID:           validatedEnv.ROLE_MUTUAL_AID,
+  ROLE_YDSA:                 validatedEnv.ROLE_YDSA,
+
+  ROLE_NON_DSA_MEMBER: validatedEnv.ROLE_NON_DSA_MEMBER,
+  ROLE_DSA_NON_DE:     validatedEnv.ROLE_DSA_NON_DE,
+
+  // Merge in your environment‐based defaults
+  ...defaultConfig,
+
+  // Flag to avoid re‐validating at runtime
+  _validated: false,
+};
+
+// Default export + runtime validator
+export default config;
+export { validateRuntime };
+
+// Named exports for backward compatibility
+export const {
+  TOKEN, CLIENT, GUILD, AN_TOKEN,
+  CHANNEL_ONBOARDING, CHANNEL_RULES, MESSAGE_RULES, LOG_CHANNEL,
+  ROLE_PENDING, ROLE_MEMBER_UNVERIFIED, ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_RULES_ACCEPTED, ROLE_MEMBER, ROLE_AFFILIATE,
+
+  ROLE_PRONOUN_HE, ROLE_PRONOUN_SHE, ROLE_PRONOUN_THEY, ROLE_PRONOUN_ANY,
+  ROLE_NORTH, ROLE_SOUTH,
+
+  ROLE_COMMUNICATIONS, ROLE_MEMBERSHIP_ENGAGEMENT,
+  ROLE_POLITICAL_EDUCATION, ROLE_LEGISLATION_TRACKING,
+  ROLE_RED_RABBITS, ROLE_PALESTINE, ROLE_MIGRANT_RIGHTS,
+  ROLE_QUEER_SOCIALISTS, ROLE_ARTS_CULTURE, ROLE_HOUSING_JUSTICE,
+  ROLE_MUTUAL_AID, ROLE_YDSA,
+
+  ROLE_NON_DSA_MEMBER, ROLE_DSA_NON_DE
+} = config;
+
+
+=== db/index.js ===
+// db/index.js
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import { info, error } from '../utils/logger.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Create data directory if it doesn't exist
+const dataDir = path.join(__dirname, '../data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPath = path.join(dataDir, 'dedsa.db');
+
+// Database connection singleton
+let db = null;
+
+/**
+ * Initialize the database
+ * @returns {Promise<import('sqlite').Database>}
+ */
+export async function initDb() {
+  if (db) return db;
+  
+  try {
+    db = await open({
+      filename: dbPath,
+      driver: sqlite3.Database
+    });
+    
+    // Enable foreign keys
+    await db.exec('PRAGMA foreign_keys = ON');
+    
+    // Create tables if they don't exist
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        discord_id TEXT PRIMARY KEY,
+        email TEXT,
+        is_member BOOLEAN,
+        verification_date TEXT,
+        last_active TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        discord_id TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (discord_id) REFERENCES users(discord_id)
+      );
+      
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        discord_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        details TEXT,
+        guild_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_audit_discord_id ON audit_log(discord_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type);
+      CREATE INDEX IF NOT EXISTS idx_sessions_discord_id ON sessions(discord_id);
+    `);
+    
+    info(null, 'Database initialized successfully');
+    return db;
+  } catch (err) {
+    error(null, `Database initialization failed: ${err.message}`, { stack: err.stack });
+    throw err;
+  }
+}
+
+/**
+ * Get the database connection
+ * @returns {import('sqlite').Database}
+ */
+export async function getDb() {
+  if (!db) {
+    await initDb();
+  }
+  return db;
+}
+
+/**
+ * Close the database connection
+ */
+export async function closeDb() {
+  if (db) {
+    await db.close();
+    db = null;
+    info(null, 'Database connection closed');
+  }
+}
+
+// Auto-initialize on module load
+initDb().catch(err => {
+  console.error('Failed to initialize database:', err);
+});
+
+=== db/models/audit.js ===
+// db/models/audit.js
+import { getDb } from '../index.js';
+import { info, error } from '../../utils/logger.js';
+
+/**
+ * Add an entry to the audit log
+ * @param {string} discordId - Discord user ID
+ * @param {string} eventType - Type of event
+ * @param {Object} details - Event details
+ * @param {string} guildId - Guild ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function addAuditEntry(discordId, eventType, details = {}, guildId = null) {
+  try {
+    const db = await getDb();
+    
+    await db.run(
+      `INSERT INTO audit_log 
+        (discord_id, event_type, details, guild_id) 
+      VALUES 
+        (?, ?, ?, ?)`,
+      discordId, eventType, JSON.stringify(details), guildId
+    );
+    
+    return true;
+  } catch (err) {
+    error(null, `Database error in addAuditEntry: ${err.message}`, { 
+      discordId, eventType 
+    });
+    return false;
+  }
+}
+
+/**
+ * Get audit entries for a user
+ * @param {string} discordId - Discord user ID
+ * @param {number} limit - Maximum number of entries to return
+ * @returns {Promise<Array>} List of audit entries
+ */
+export async function getUserAuditEntries(discordId, limit = 100) {
+  try {
+    const db = await getDb();
+    
+    const entries = await db.all(
+      `SELECT * FROM audit_log 
+      WHERE discord_id = ? 
+      ORDER BY created_at DESC
+      LIMIT ?`,
+      discordId, limit
+    );
+    
+    // Parse JSON details
+    return entries.map(entry => ({
+      ...entry,
+      details: JSON.parse(entry.details || '{}')
+    }));
+  } catch (err) {
+    error(null, `Database error in getUserAuditEntries: ${err.message}`, { discordId });
+    return [];
+  }
+}
+
+/**
+ * Get audit entries by event type
+ * @param {string} eventType - Type of event
+ * @param {number} limit - Maximum number of entries to return
+ * @returns {Promise<Array>} List of audit entries
+ */
+export async function getAuditEntriesByType(eventType, limit = 100) {
+  try {
+    const db = await getDb();
+    
+    const entries = await db.all(
+      `SELECT * FROM audit_log 
+      WHERE event_type = ? 
+      ORDER BY created_at DESC
+      LIMIT ?`,
+      eventType, limit
+    );
+    
+    // Parse JSON details
+    return entries.map(entry => ({
+      ...entry,
+      details: JSON.parse(entry.details || '{}')
+    }));
+  } catch (err) {
+    error(null, `Database error in getAuditEntriesByType: ${err.message}`, { eventType });
+    return [];
+  }
+}
+
+/**
+ * Record role change in audit log
+ * @param {string} discordId - Discord user ID
+ * @param {string} roleId - Role ID
+ * @param {string} guildId - Guild ID
+ * @param {'add'|'remove'} action - Whether role was added or removed
+ * @returns {Promise<boolean>} Success status
+ */
+export async function recordRoleChange(discordId, roleId, guildId, action) {
+  return await addAuditEntry(
+    discordId,
+    'ROLE_CHANGE',
+    { roleId, action },
+    guildId
+  );
+}
+
+/**
+ * Record verification attempt in audit log
+ * @param {string} discordId - Discord user ID
+ * @param {string} email - Email address
+ * @param {string} guildId - Guild ID
+ * @param {boolean} success - Whether verification succeeded
+ * @param {string} reason - Failure reason (if applicable)
+ * @returns {Promise<boolean>} Success status
+ */
+export async function recordVerificationAttempt(discordId, email, guildId, success, reason = null) {
+  return await addAuditEntry(
+    discordId,
+    success ? 'VERIFICATION_SUCCESS' : 'VERIFICATION_FAILURE',
+    { email, reason },
+    guildId
+  );
+}
+
+=== db/models/session.js ===
+// db/models/session.js
+import { getDb } from '../index.js';
+import { info, error } from '../../utils/logger.js';
+
+/**
+ * Get a user session
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<Object|null>} Session data or null if not found
+ */
+export async function getSession(userId) {
+  try {
+    const db = await getDb();
+    const row = await db.get(
+      'SELECT data, updated_at FROM sessions WHERE discord_id = ? ORDER BY updated_at DESC LIMIT 1',
+      userId
+    );
+    
+    if (!row) return null;
+    
+    try {
+      return JSON.parse(row.data);
+    } catch (parseErr) {
+      error(null, `Failed to parse session data: ${parseErr.message}`, { userId });
+      return null;
+    }
+  } catch (err) {
+    error(null, `Database error in getSession: ${err.message}`, { userId });
+    return null;
+  }
+}
+
+/**
+ * Save a user session
+ * @param {string} userId - Discord user ID
+ * @param {Object} data - Session data
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveSession(userId, data) {
+  try {
+    const db = await getDb();
+    
+    // Ensure user exists in users table (for foreign key)
+    await db.run(
+      'INSERT OR IGNORE INTO users (discord_id, created_at) VALUES (?, CURRENT_TIMESTAMP)',
+      userId
+    );
+    
+    // Get existing session or create new
+    const existingSession = await db.get(
+      'SELECT id FROM sessions WHERE discord_id = ? ORDER BY updated_at DESC LIMIT 1',
+      userId
+    );
+    
+    if (existingSession) {
+      // Update existing session
+      await db.run(
+        'UPDATE sessions SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        JSON.stringify(data),
+        existingSession.id
+      );
+    } else {
+      // Create new session
+      await db.run(
+        'INSERT INTO sessions (discord_id, data, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+        userId,
+        JSON.stringify(data)
+      );
+    }
+    
+    return true;
+  } catch (err) {
+    error(null, `Database error in saveSession: ${err.message}`, { userId });
+    return false;
+  }
+}
+
+/**
+ * Delete a user session
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function deleteSession(userId) {
+  try {
+    const db = await getDb();
+    await db.run('DELETE FROM sessions WHERE discord_id = ?', userId);
+    return true;
+  } catch (err) {
+    error(null, `Database error in deleteSession: ${err.message}`, { userId });
+    return false;
+  }
+}
+
+/**
+ * Clean up old sessions
+ * @param {number} maxAgeDays - Max age in days
+ * @returns {Promise<number>} Number of sessions deleted
+ */
+export async function cleanupSessions(maxAgeDays = 30) {
+  try {
+    const db = await getDb();
+    const result = await db.run(
+      `DELETE FROM sessions WHERE updated_at < datetime('now', '-${maxAgeDays} days')`
+    );
+    return result.changes;
+  } catch (err) {
+    error(null, `Database error in cleanupSessions: ${err.message}`);
+    return 0;
+  }
+}
+
+/**
+ * SessionStore API compatible with the in-memory version
+ */
+export const sessionStore = {
+  get: async (userId) => {
+    return await getSession(userId);
+  },
+  
+  set: async (userId, data) => {
+    return await saveSession(userId, data);
+  },
+  
+  update: async (userId, partialData) => {
+    const existingData = await getSession(userId) || {};
+    return await saveSession(userId, { ...existingData, ...partialData });
+  },
+  
+  delete: async (userId) => {
+    return await deleteSession(userId);
+  }
+};
+
+=== db/models/user.js ===
+// db/models/user.js
+import { getDb } from '../index.js';
+import { info, error } from '../../utils/logger.js';
+
+/**
+ * Get a user by Discord ID
+ * @param {string} discordId - Discord user ID
+ * @returns {Promise<Object|null>} User data or null if not found
+ */
+export async function getUser(discordId) {
+  try {
+    const db = await getDb();
+    return await db.get('SELECT * FROM users WHERE discord_id = ?', discordId);
+  } catch (err) {
+    error(null, `Database error in getUser: ${err.message}`, { discordId });
+    return null;
+  }
+}
+
+/**
+ * Create or update a user
+ * @param {string} discordId - Discord user ID
+ * @param {Object} userData - User data
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveUser(discordId, userData) {
+  try {
+    const db = await getDb();
+    const { email, is_member, verification_date } = userData;
+    
+    // Check if user exists
+    const existingUser = await getUser(discordId);
+    
+    if (existingUser) {
+      // Update existing user
+      await db.run(
+        `UPDATE users SET 
+          email = COALESCE(?, email),
+          is_member = COALESCE(?, is_member),
+          verification_date = COALESCE(?, verification_date),
+          last_active = CURRENT_TIMESTAMP
+        WHERE discord_id = ?`,
+        email, is_member, verification_date, discordId
+      );
+    } else {
+      // Create new user
+      await db.run(
+        `INSERT INTO users 
+          (discord_id, email, is_member, verification_date, last_active) 
+        VALUES 
+          (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        discordId, email, is_member, verification_date
+      );
+    }
+    
+    return true;
+  } catch (err) {
+    error(null, `Database error in saveUser: ${err.message}`, { discordId });
+    return false;
+  }
+}
+
+/**
+ * Record user verification status
+ * @param {string} discordId - Discord user ID
+ * @param {string} email - Email address
+ * @param {boolean} isMember - Whether user is a DSA member
+ * @returns {Promise<boolean>} Success status
+ */
+export async function recordVerification(discordId, email, isMember) {
+  return await saveUser(discordId, {
+    email,
+    is_member: isMember ? 1 : 0,
+    verification_date: new Date().toISOString()
+  });
+}
+
+/**
+ * Find user by email
+ * @param {string} email - Email address
+ * @returns {Promise<Object|null>} User data or null if not found
+ */
+export async function findUserByEmail(email) {
+  try {
+    const db = await getDb();
+    return await db.get('SELECT * FROM users WHERE email = ?', email);
+  } catch (err) {
+    error(null, `Database error in findUserByEmail: ${err.message}`, { email });
+    return null;
+  }
+}
+
+/**
+ * Update last active timestamp
+ * @param {string} discordId - Discord user ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function updateLastActive(discordId) {
+  try {
+    const db = await getDb();
+    await db.run(
+      'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE discord_id = ?',
+      discordId
+    );
+    return true;
+  } catch (err) {
+    error(null, `Database error in updateLastActive: ${err.message}`, { discordId });
+    return false;
+  }
+}
+
+/**
+ * Get recently active users
+ * @param {number} days - Number of days
+ * @param {number} limit - Maximum number of users to return
+ * @returns {Promise<Array>} List of active users
+ */
+export async function getActiveUsers(days = 30, limit = 100) {
+  try {
+    const db = await getDb();
+    return await db.all(
+      `SELECT * FROM users 
+      WHERE last_active > datetime('now', '-${days} days') 
+      ORDER BY last_active DESC
+      LIMIT ?`,
+      limit
+    );
+  } catch (err) {
+    error(null, `Database error in getActiveUsers: ${err.message}`);
+    return [];
+  }
+}
+
+=== deploy-commands.js ===
+// deploy-commands.js
+import { REST, Routes } from 'discord.js';
+import { TOKEN, CLIENT, GUILD } from './config.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const commands = [];
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+// deploy-commands.js - corrected command handling 
+for (const file of commandFiles) {
+  try {
+    const filePath = path.join(commandsPath, file);
+    const fileURL = `file://${filePath}`;
+    const command = await import(fileURL);
+    
+    // Properly handle different export patterns
+    if (command.data && typeof command.data.toJSON === 'function') {
+      // SlashCommandBuilder instance
+      commands.push(command.data.toJSON());
+    } else if (command.data) {
+      // Plain data object
+      commands.push(command.data);
+    } else if (command.default?.data) {
+      // Default export with data property
+      const data = command.default.data;
+      if (typeof data.toJSON === 'function') {
+        commands.push(data.toJSON());
+      } else {
+        commands.push(data);
+      }
+    } else {
+      console.warn(`Command at ${file} has no valid data property`);
+    }
+  } catch (error) {
+    console.error(`Error loading command ${file}:`, error);
+  }
+}
+
+const rest = new REST({ version: '10' }).setToken(TOKEN);
+
+(async () => {
+  try {
+    console.log(`Started refreshing ${commands.length} application commands.`);
+    const data = await rest.put(
+      Routes.applicationGuildCommands(CLIENT, GUILD),
+      { body: commands }
+    );
+    console.log(`Successfully reloaded ${data.length} application commands.`);
+  } catch (error) {
+    console.error('Error deploying commands:', error);
+  }
+})();
+
+=== env.js ===
+// env.js
+import dotenv from 'dotenv';
+import { validateEnv } from './config/validation.js';
+import { getDefaults } from './config/defaults.js';
+
+// 1. Load .env into process.env
+dotenv.config();
+
+// 2. Determine runtime environment
+export const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// 3. Validate required env vars at startup
+let validatedEnv;
+try {
+  validatedEnv = validateEnv(process.env);
+  console.log('✅ Environment variables validated successfully');
+} catch (err) {
+  console.error('❌ Environment validation failed:');
+  console.error(err.message);
+  process.exit(1);
+}
+
+// 4. Fetch any defaults based on NODE_ENV
+export const defaultConfig = getDefaults(NODE_ENV);
+
+// 5. Export the validated env object
+export default validatedEnv;
+
+
+=== events/guildMemberAdd.js ===
+// events/guildMemberAdd.js
+import { Events } from 'discord.js';
+import { sendOnboarding } from '../utils/sendOnboarding.js';
+
+export default {
+  name: Events.GuildMemberAdd,
+  once: false,
+  async execute(member) {
+    await sendOnboarding(member);
+    console.log(`✅ Onboarding sent to ${member.user.tag}`);
+  }
+};
+
+
+=== events/interactionCreate.js ===
+// events/interactionCreate.js
+import { Events } from 'discord.js';
+import { handleButtons } from '../handlers/buttonHandlers.js';
+import { handleModals }   from '../handlers/modalHandlers.js';
+import { handleSelectMenus } from '../handlers/selectMenuHandlers.js';
+import { getCommandHandler } from '../utils/handlerRegistry.js';
+import { error, info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { getErrorMessage } from '../config/errorMessages.js';
+
+export default {
+  name: Events.InteractionCreate,
+  
+  async execute(interaction, client) {
+    try {
+      info(
+        interaction.guild,
+        `Interaction: ${interaction.type} ${interaction.commandName || interaction.customId || 'unknown'} from ${interaction.user.tag}`
+      );
+
+      // Slash commands
+      if (interaction.isChatInputCommand()) {
+        const cmd = client.commands.get(interaction.commandName);
+        if (!cmd?.execute) {
+          throw new BotError(
+            `Command not found: ${interaction.commandName}`,
+            ErrorTypes.COMMAND,
+            'COMMAND_NOT_FOUND'
+          );
+        }
+      
+        // run the module’s execute()
+        await cmd.execute(interaction, client);
+        return;
+      }
+
+      // Buttons
+      if (interaction.isButton()) {
+        return await handleButtons(interaction);
+      }
+
+      // Select menus
+      if (interaction.isStringSelectMenu()) {
+        return await handleSelectMenus(interaction);
+      }
+
+      // Modals
+      if (interaction.isModalSubmit()) {
+        return await handleModals(interaction);
+      }
+      
+    } catch (err) {
+      // Last-resort error handler
+      const errorType = err.type || ErrorTypes.UNKNOWN;
+      const errorCode = err.code || null;
+      
+      error(
+        interaction.guild,
+        `Unhandled error in interaction handler: ${err.message}`,
+        { 
+          errorType,
+          errorCode,
+          errorStack: err.stack,
+          interactionType: interaction.type,
+          interactionId: interaction.customId || interaction.commandName
+        }
+      );
+      
+      // Provide a user-friendly error message
+      const content = getErrorMessage(errorType, errorCode);
+      
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content, ephemeral: true }).catch(() => {});
+      } else {
+        await interaction.reply({ content, ephemeral: true }).catch(() => {});
+      }
+    }
+  }
+};
+
+=== events/messageReactionAdd.js ===
+// events/messageReactionAdd.js
+import { Events } from 'discord.js';
+import {
+  ROLE_MEMBER_UNVERIFIED,
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_RULES_ACCEPTED,
+  ROLE_MEMBER,
+  MESSAGE_RULES,
+  LOG_CHANNEL
+} from '../config.js';
+
+export default {
+  name: Events.MessageReactionAdd,
+  /**
+   * @param {import('discord.js').MessageReaction} reaction
+   * @param {import('discord.js').User} user
+   * @param {import('discord.js').Client} client
+   */
+  async execute(reaction, user, client) {
+    // Ignore bot reactions
+    if (user.bot) return;
+
+    // Ensure reaction is fully fetched
+    if (reaction.partial) {
+      try {
+        await reaction.fetch();
+      } catch (error) {
+        console.error('Error fetching partial reaction:', error);
+        return;
+      }
+    }
+
+    // Only proceed if this is a ✅ on the rules message
+    if (
+      reaction.message.id !== MESSAGE_RULES ||
+      reaction.emoji.name !== '✅'
+    ) {
+      return;
+    }
+
+    const guild = reaction.message.guild;
+    if (!guild) return;
+
+    // Fetch up-to-date guild member
+    const member = await guild.members.fetch(user.id);
+
+    // Helper to log to channel
+    async function logToChannel(content) {
+      if (!LOG_CHANNEL) return;
+      try {
+        const logCh = await guild.channels.fetch(LOG_CHANNEL);
+        if (logCh?.isTextBased()) {
+          await logCh.send(content);
+        }
+      } catch (err) {
+        console.error('Logging error:', err);
+      }
+    }
+
+    // Grant the "rules accepted" intermediary role
+    try {
+      await member.roles.add(ROLE_RULES_ACCEPTED);
+    } catch (error) {
+      console.error('Failed to add rules accepted role:', error);
+      await member.send('❌ I had trouble assigning the "rules accepted" role. Please contact a moderator.').catch(console.error);
+      await logToChannel(`❌ ERROR: Failed to add RULES_ACCEPTED to ${user.tag}: ${error.message}`);
+      return;
+    }
+
+    // Handle DSA members (auto-grant full access)
+    if (member.roles.cache.has(ROLE_MEMBER_UNVERIFIED)) {
+      // Remove unverified roles
+      await member.roles.remove([ROLE_MEMBER_UNVERIFIED, ROLE_RULES_ACCEPTED]).catch(console.error);
+
+      // Grant full Member role
+      try {
+        await member.roles.add(ROLE_MEMBER);
+        await member.send("✅ You've accepted the rules and now have full Member access!").catch(console.error);
+        await logToChannel(`📝 INFO: ${user.tag} upgraded to full member`);
+      } catch (error) {
+        console.error('Failed to add member role:', error);
+        await member.send('❌ I had trouble assigning your Member role. Please contact a moderator.').catch(console.error);
+        await logToChannel(`❌ ERROR: Failed to add MEMBER to ${user.tag}: ${error.message}`);
+      }
+    }
+    // For affiliates, just remove intermediary and notify mods
+    else if (member.roles.cache.has(ROLE_AFFILIATE_UNVERIFIED)) {
+      await member.roles.remove(ROLE_RULES_ACCEPTED).catch(console.error);
+
+      await member.send('⏳ Thanks for reading the rules. A moderator will review your affiliate access soon.').catch(console.error);
+
+      const alert = `🚨 ALERT: <@&${ROLE_MEMBER}> ${user.tag} is waiting for affiliate approval!`;
+      await logToChannel(alert);
+    }
+  }
+};
+
+
+=== events/ready.js ===
+import { Events } from 'discord.js';
+
+export default {
+  name: Events.ClientReady,
+  once: true,
+  /**
+   * @param {import('discord.js').Client} client
+   */
+  async execute(client) {
+    console.log(`✅ Bot online as ${client.user.tag}`);
+
+    // Update bot presence
+    client.user.setPresence({
+      activities: [{ name: 'Delaware DSA', type: 3 }], // "Watching"
+      status: 'online'
+    });
+  }
+};
+
+
+=== handlers/adminApprove.js ===
+// handlers/adminApprove.js
+import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from 'discord.js';
+import { info, warn, error } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import {
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_AFFILIATE,
+  LOG_CHANNEL
+} from '../config.js';
+
+export async function handleAdminVerifyApprove(interaction) {
+  if (!interaction.member.permissions.has('ManageRoles')) {
+    return interaction.reply({ content: '❌ You need Manage Roles permission to approve.', ephemeral: true });
+  }
+  const parts = interaction.customId.split('_');
+  const targetId = parts[parts.length - 1];
+  try {
+    const member = await interaction.guild.members.fetch(targetId);
+    await safeRoleAssignment(member, ROLE_AFFILIATE_UNVERIFIED, 'remove');
+    recordRoleChange(targetId, ROLE_AFFILIATE_UNVERIFIED, interaction.guild.id, 'remove');
+    await safeRoleAssignment(member, ROLE_AFFILIATE, 'add');
+    recordRoleChange(targetId, ROLE_AFFILIATE, interaction.guild.id, 'add');
+    info(interaction.guild, `Admin ${interaction.user.tag} approved affiliate ${member.user.tag}`);
+    await member.send('✅ Your affiliate status has been approved!').catch(() => {
+      warn(interaction.guild, `Could not DM approval to ${member.user.tag}`);
+    });
+    await interaction.update({ content: `✅ Affiliate approved for ${member.user.tag}`, components: [] });
+  } catch (err) {
+    error(interaction.guild, `Error approving affiliate: ${err.message}`, { targetId });
+    throw new BotError(`Error approving affiliate: ${err.message}`, ErrorTypes.ROLE_MANAGEMENT, err.code);
+  }
+}
+
+
+=== handlers/adminConfirmAffiliate.js ===
+// handlers/adminConfirmAffiliate.js
+import { info, warn } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import {
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_AFFILIATE,
+  LOG_CHANNEL
+} from '../config.js';
+
+export async function handleAdminConfirmAffiliate(interaction) {
+  if (!interaction.member.permissions.has('ManageRoles')) {
+    return interaction.reply({ content: '❌ You need Manage Roles permission to confirm.', ephemeral: true });
+  }
+  const parts = interaction.customId.split('_');
+  const targetId = parts[parts.length - 1];
+  try {
+    const member = await interaction.guild.members.fetch(targetId);
+    if (member.roles.cache.has(ROLE_AFFILIATE_UNVERIFIED)) {
+      await safeRoleAssignment(member, ROLE_AFFILIATE_UNVERIFIED, 'remove');
+      recordRoleChange(targetId, ROLE_AFFILIATE_UNVERIFIED, interaction.guild.id, 'remove');
+    }
+    await safeRoleAssignment(member, ROLE_AFFILIATE, 'add');
+    recordRoleChange(targetId, ROLE_AFFILIATE, interaction.guild.id, 'add');
+    info(interaction.guild, `Admin ${interaction.user.tag} confirmed affiliate ${member.user.tag}`);
+    await member.send('✅ You have been confirmed as a chapter affiliate!').catch(()=>{ warn(interaction.guild, `Could not DM confirmation to ${member.user.tag}`); });
+    if (LOG_CHANNEL) {
+      const ch = await interaction.guild.channels.fetch(LOG_CHANNEL);
+      if (ch?.isTextBased()) {
+        await ch.send(`✅ Admin ${interaction.user.tag} confirmed ${member.user.tag} as affiliate.`);
+      }
+    }
+    await interaction.update({ content: `✅ ${member.user.tag} is now a chapter affiliate.`, components: [] });
+  } catch (err) {
+    info(interaction.guild, `Error confirming affiliate: ${err.message}`, { targetId });
+    throw new BotError(`Error confirming affiliate: ${err.message}`, ErrorTypes.ROLE_MANAGEMENT, err.code);
+  }
+}
+
+
+=== handlers/adminDeny.js ===
+// handlers/adminDeny.js
+import { info, warn, error } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import {
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_RULES_ACCEPTED
+} from '../config.js';
+
+export async function handleAdminVerifyDeny(interaction) {
+  if (!interaction.member.permissions.has('ManageRoles')) {
+    return interaction.reply({ content: '❌ You need Manage Roles permission to deny.', ephemeral: true });
+  }
+  const parts = interaction.customId.split('_');
+  const targetId = parts[parts.length - 1];
+  try {
+    const member = await interaction.guild.members.fetch(targetId);
+    await safeRoleAssignment(member, ROLE_AFFILIATE_UNVERIFIED, 'remove').catch(()=>{});
+    await safeRoleAssignment(member, ROLE_RULES_ACCEPTED, 'remove').catch(()=>{});
+    info(interaction.guild, `Admin ${interaction.user.tag} denied affiliate ${member.user.tag}`);
+    await member.send('❌ Your affiliate request was denied.').catch(()=>{ warn(interaction.guild, `Could not DM denial to ${member.user.tag}`); });
+    await interaction.update({ content: `❌ Affiliate denied for ${member.user.tag}`, components: [] });
+  } catch (err) {
+    error(interaction.guild, `Error denying affiliate: ${err.message}`, { targetId });
+    throw new BotError(`Error denying affiliate: ${err.message}`, ErrorTypes.ROLE_MANAGEMENT, err.code);
+  }
+}
+
+
+=== handlers/affiliateStart.js ===
+// handlers/affiliateStart.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
+import { info, warn } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import {
+  ROLE_PENDING,
+  ROLE_AFFILIATE_UNVERIFIED,
+  LOG_CHANNEL
+} from '../config.js';
+
+export async function handleAffiliateStart(interaction) {
+  try {
+    // remove pending, add affiliate-unverified
+    await safeRoleAssignment(interaction.member, ROLE_PENDING, 'remove');
+    recordRoleChange(interaction.user.id, ROLE_PENDING, interaction.guild.id, 'remove');
+    await safeRoleAssignment(interaction.member, ROLE_AFFILIATE_UNVERIFIED, 'add');
+    recordRoleChange(interaction.user.id, ROLE_AFFILIATE_UNVERIFIED, interaction.guild.id, 'add');
+    info(interaction.guild, `User ${interaction.user.tag} started affiliate onboarding`);
+
+    const pronouns = [
+      { label: 'HE/HIM',    value: 'pronoun_he'   },
+      { label: 'SHE/HER',   value: 'pronoun_she'  },
+      { label: 'THEY/THEM', value: 'pronoun_they' },
+      { label: 'ANY/ALL',   value: 'pronoun_any'  }
+    ];
+    const pronounMenu = new StringSelectMenuBuilder()
+      .setCustomId('pick_pronouns')
+      .setPlaceholder('Select your pronouns…')
+      .setMinValues(1)
+      .setMaxValues(pronouns.length)
+      .addOptions(pronouns);
+
+      await interaction.update({
+        content: '🤝 **Welcome, ally!** We\'re excited to have you join our struggle for justice.\n\n' +
+          '🏷️ **Step 1:** Let\'s start with pronouns—select yours below (you can choose multiple options), then click **Done** when you\'re ready.\n\n' +
+          'Available options:\n• HE/HIM\n• SHE/HER\n• THEY/THEM\n• ANY/ALL',
+        components: [
+          new ActionRowBuilder().addComponents(pronounMenu),
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('pronouns_done_affiliate')
+              .setLabel('Done')
+              .setStyle(ButtonStyle.Primary)
+          )
+        ]
+      });
+
+    // log to mod-channel
+    if (LOG_CHANNEL) {
+      try {
+        const logCh = await interaction.guild.channels.fetch(LOG_CHANNEL);
+        if (logCh?.isTextBased()) {
+          await logCh.send(`📝 ${interaction.user.tag} started affiliate onboarding`);
+        }
+      } catch (logErr) {
+        warn(interaction.guild, `Failed to log affiliate start: ${logErr.message}`);
+      }
+    }
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    throw new BotError(
+      `Error in affiliate start flow: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+
+=== handlers/buttonHandlers.js ===
+// handlers/refactoredButtonHandlers.js
+/**
+ * Central router for button interactions
+ * Uses pattern matching for efficient routing
+ */
+import { 
+  registerButtonHandler, 
+  getButtonHandler 
+} from '../utils/handlerRegistry.js';
+
+import { info, error, warn } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { commandRateLimiter } from '../utils/rateLimit.js';
+import { canUseButton } from '../utils/permissionChecks.js';
+
+// Import all handlers
+import { handleVerifyStart } from './verifyStart.js';
+import { handleAffiliateStart } from './affiliateStart.js';
+import { handlePronounsDone } from './pronounsMember.js';
+import { handleRolesDone } from './rolesMember.js';
+import { handlePronounsDoneAffiliate } from './pronounsAffiliate.js';
+import { handleRolesDoneAffiliate } from './rolesAffiliate.js';
+import { handleRulesAccept } from './rulesAccept.js';
+import { handleAdminVerifyApprove } from './adminApprove.js';
+import { handleAdminVerifyDeny } from './adminDeny.js';
+import { handleAdminConfirmAffiliate } from './adminConfirmAffiliate.js';
+
+// Register all button handlers
+function registerAllHandlers() {
+  // Standard handlers with direct customId matching
+  registerButtonHandler('verify_start', handleVerifyStart);
+  registerButtonHandler('affiliate_start', handleAffiliateStart);
+  registerButtonHandler('pronouns_done', handlePronounsDone);
+  registerButtonHandler('roles_done', handleRolesDone);
+  registerButtonHandler('pronouns_done_affiliate', handlePronounsDoneAffiliate);
+  registerButtonHandler('roles_done_affiliate', handleRolesDoneAffiliate);
+  
+  // Rules accept handlers
+  registerButtonHandler('rules_accept_member', handleRulesAccept);
+  registerButtonHandler('rules_accept_affiliate', handleRulesAccept);
+  
+  // Admin handlers with regex patterns for user ID extraction
+  registerButtonHandler(/^admin_verify_approve_(\d+)$/, handleAdminVerifyApprove);
+  registerButtonHandler(/^admin_verify_deny_(\d+)$/, handleAdminVerifyDeny);
+  registerButtonHandler(/^admin_confirm_affiliate_(\d+)$/, handleAdminConfirmAffiliate);
+}
+
+// Register handlers on module load
+registerAllHandlers();
+
+/**
+ * Main entry point for handling button interactions
+ * @param {import('discord.js').ButtonInteraction} interaction 
+ */
+export async function handleButtons(interaction) {
+  // Apply rate limiting
+  const limiter = commandRateLimiter.forUser(interaction.user.id);
+  if (!(await limiter.consume(1))) {
+    return interaction.reply({
+      content: '⏱️ You\'re interacting too quickly. Please wait a moment and try again.',
+      ephemeral: true
+    });
+  }
+  
+  // Log the interaction
+  info(interaction.guild, `Button click: ${interaction.customId} by ${interaction.user.tag}`);
+  
+  try {
+    // Check if user can use this button
+    canUseButton(interaction);
+    
+    // Get the appropriate handler
+    const handler = getButtonHandler(interaction.customId);
+    
+    if (!handler) {
+      error(interaction.guild, `No handler for button: ${interaction.customId}`, {
+        userId: interaction.user.id,
+        username: interaction.user.tag
+      });
+      
+      return interaction.reply({
+        content: '❌ This button isn\'t implemented. Please contact an administrator.',
+        ephemeral: true
+      });
+    }
+    
+    // Execute the handler
+    await handler(interaction);
+    
+  } catch (err) {
+    if (err instanceof BotError && err.type === ErrorTypes.PERMISSION) {
+      return interaction.reply({
+        content: '❌ You don\'t have permission to use this button.',
+        ephemeral: true
+      });
+    }
+    
+    // Let the global error handler deal with it
+    throw err;
+  }
+}
+
+// Export the register function for potential reloading
+export { registerAllHandlers };
+
+=== handlers/helpButtons.js ===
+// handlers/helpButtons.js
+import { 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} from 'discord.js';
+import { registerButtonHandler } from '../utils/handlerRegistry.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { createSelectMenu } from '../utils/componentFactory.js';
+import {
+  memberRoleMap,
+  memberRoleLabels,
+  affiliateRoleMap,
+  affiliateRoleLabels
+} from '../utils/roleMaps.js';
+import { ROLE_AFFILIATE_UNVERIFIED } from '../config.js';
+
+// Help verify button
+export async function handleHelpVerify(interaction) {
+  info(interaction.guild, `User ${interaction.user.tag} clicked help_verify button`);
+  
+  const modal = new ModalBuilder()
+    .setCustomId('verify_email_modal')
+    .setTitle('Verify Your DSA Membership');
+
+  const emailInput = new TextInputBuilder()
+    .setCustomId('email_input')
+    .setLabel('Enter the email you used to sign up for DSA!')
+    .setPlaceholder('email@example.com')
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(emailInput));
+
+  try {
+    await interaction.showModal(modal);
+    info(interaction.guild, `Showing verify modal to ${interaction.user.tag} from help button`);
+  } catch (err) {
+    throw new BotError(
+      `Failed to show modal for ${interaction.user.tag} from help button: ${err.message}`,
+      ErrorTypes.DISCORD_API,
+      err.code
+    );
+  }
+}
+
+// Help roles button
+export async function handleHelpRoles(interaction) {
+  info(interaction.guild, `User ${interaction.user.tag} clicked help_roles button`);
+  
+  const member = interaction.member;
+  const isAffiliate = member.roles.cache.has(ROLE_AFFILIATE_UNVERIFIED);
+  
+  // Determine which role map to use based on member type
+  const map = isAffiliate ? affiliateRoleMap : memberRoleMap;
+  const labels = isAffiliate ? affiliateRoleLabels : memberRoleLabels;
+
+  // Get current roles
+  const userRoles = member.roles.cache.map(r => r.id);
+  
+  // Build select menu options from the centralized maps
+  const options = Object.entries(map).map(([key, roleId]) => {
+    // Check if user already has this role
+    const hasRole = userRoles.includes(roleId);
+    
+    return {
+      label: labels[key],
+      value: key,
+      default: hasRole // Pre-select if user has this role
+    };
+  });
+
+  // Create the select menu
+  const menu = createSelectMenu(
+    isAffiliate ? 'pick_roles_affiliate' : 'pick_roles_member',
+    isAffiliate ? 'Select pronouns & affiliate tags…' : 'Select pronouns, region & WGs…',
+    options
+  );
+
+  // Update the interaction with the menu
+  await interaction.update({
+    content: '🔧 Role selection menu:',
+    components: [new ActionRowBuilder().addComponents(menu)],
+    ephemeral: true
+  });
+}
+
+// Help rules button
+export async function handleHelpRules(interaction) {
+  info(interaction.guild, `User ${interaction.user.tag} clicked help_rules button`);
+  
+  const rulesEmbed = new EmbedBuilder()
+    .setTitle('📜 Community Rules')
+    .setDescription([
+      'Our **DEDSA Discord Rules** keep us safe, respectful, and energizing for everyone:',
+      '1️⃣ **Be Respectful** – Engage comradely.',
+      '2️⃣ **No Harassment** – Zero tolerance for hate speech or personal attacks.',
+      '3️⃣ **Stay On-Topic** – Keep discussions aligned with our mission.',
+      '4️⃣ **Protect Privacy** – Do not share anyone\'s personal info.',
+      '5️⃣ **No Spam** – Avoid excessive messages or unsolicited links.',
+      '6️⃣ **Uphold DSA Values** – Solidarity, equality, and justice in all interactions.',
+      '',
+      'React with ✅ in the #rules channel once you\'ve read and agree.'
+    ].join('\n'))
+    .setColor('Blue')
+    .setFooter({ text: 'Use /rules any time to review these.' });
+
+  await interaction.update({
+    content: null,
+    embeds: [rulesEmbed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('help_back')
+          .setLabel('Back to Help Menu')
+          .setStyle(ButtonStyle.Secondary)
+      )
+    ],
+    ephemeral: true
+  });
+}
+
+// Help back button
+export async function handleHelpBack(interaction) {
+  info(interaction.guild, `User ${interaction.user.tag} clicked help_back button`);
+  
+  // Go back to main help menu
+  const embed = new EmbedBuilder()
+    .setTitle('🤖 DSA Discord Bot Help')
+    .setDescription('Here are the available commands for this server:')
+    .setColor('#e63946')
+    .addFields([
+      {
+        name: '/verify',
+        value: 'Start the verification process to confirm your DSA membership status'
+      },
+      {
+        name: '/roles',
+        value: 'Open the role-selection menu to update your pronouns, region, and working groups'
+      },
+      {
+        name: '/rules',
+        value: 'Review the server rules'
+      },
+      {
+        name: '/help',
+        value: 'Show this help message'
+      }
+    ])
+    .setFooter({
+      text: 'Delaware DSA',
+      iconURL: interaction.guild.iconURL() || undefined
+    });
+  
+  // Add moderator commands if user has the right permissions
+  if (interaction.member.permissions.has('ManageRoles')) {
+    embed.addFields([
+      {
+        name: '🔧 Moderator Commands',
+        value: [
+          '`/onboard` - Send onboarding message to a user',
+          '`/confirm-affiliate` - Confirm a user as a chapter affiliate'
+        ].join('\n')
+      }
+    ]);
+  }
+  
+  // Create interactive buttons for quick command access
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('help_verify')
+        .setLabel('Verify')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('help_roles')
+        .setLabel('Roles')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('help_rules')
+        .setLabel('Rules')
+        .setStyle(ButtonStyle.Primary)
+    );
+  
+  await interaction.update({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
+}
+
+// Register all help button handlers
+export function registerHelpButtonHandlers() {
+  registerButtonHandler('help_verify', handleHelpVerify);
+  registerButtonHandler('help_roles', handleHelpRoles);
+  registerButtonHandler('help_rules', handleHelpRules);
+  registerButtonHandler('help_back', handleHelpBack);
+}
+
+// Auto-register button handlers when this module is imported
+registerHelpButtonHandlers();
+
+=== handlers/modalHandlers.js ===
+// handlers/refactoredModalHandlers.js
+import { 
+  registerModalHandler, 
+  getModalHandler 
+} from '../utils/handlerRegistry.js';
+
+import { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { info, error, warn } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { processModalSubmission } from '../middleware/inputSanitizer.js';
+import { commandRateLimiter } from '../utils/rateLimit.js';
+import { recordFailedVerification, recordSuccessfulVerification } from '../services/securityAudit.js';
+import { lookupAN } from '../services/actionNetwork.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { 
+  createPronounSelectionMenu, 
+  createDoneButton,
+  createSelectMenu
+} from '../utils/componentFactory.js';
+
+import {
+  ROLE_PENDING,
+  ROLE_MEMBER_UNVERIFIED,
+  ROLE_AFFILIATE_UNVERIFIED
+} from '../config.js';
+
+/**
+ * Handler for email verification modal
+ * @param {import('discord.js').ModalSubmitInteraction} interaction 
+ */
+async function handleVerifyEmailModal(interaction) {
+  try {
+    // Validate and sanitize email input
+    const fields = processModalSubmission(interaction, {
+      'email_input': 'email'
+    });
+    
+    const email = fields.email_input;
+    
+    info(interaction.guild, `[verify] ${interaction.user.tag} submitted email: ${email}`);
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const isMember = await lookupAN(email, { 
+        guildId: interaction.guild.id 
+      });
+      
+      // Remove pending role regardless of outcome
+      await safeRoleAssignment(interaction.member, ROLE_PENDING, 'remove');
+
+      if (isMember) {
+        // Record successful verification
+        recordSuccessfulVerification(
+          interaction.user.id,
+          email,
+          interaction.guild.id
+        );
+        
+        // Member flow
+        await safeRoleAssignment(interaction.member, ROLE_MEMBER_UNVERIFIED, 'add');
+        
+        // Create UI components
+        const pronounMenu = createPronounSelectionMenu();
+        const doneButton = createDoneButton('pronouns');
+
+        await interaction.editReply({
+          content: '✅ **Membership confirmed!** You\'re officially part of the movement.\n\n' +
+            '🏷️ **Step 1:** Let\'s help folks address you correctly! Select your pronouns below (you can choose multiple options), then hit **Done** when you\'re ready.\n\n' +
+            'Available options:\n• HE/HIM\n• SHE/HER\n• THEY/THEM\n• ANY/ALL',
+          components: [
+            new ActionRowBuilder().addComponents(pronounMenu),
+            doneButton
+          ]
+        });
+
+      } else {
+        // Record verification outcome (not a member, but not exactly "failed")
+        recordFailedVerification(
+          interaction.user.id,
+          email,
+          interaction.guild.id,
+          'Not a DSA member'
+        );
+        
+        // Affiliate flow → show pronouns step
+        await safeRoleAssignment(interaction.member, ROLE_AFFILIATE_UNVERIFIED, 'add');
+        
+        // Create UI components
+        const pronounMenu = createPronounSelectionMenu();
+        const doneButton = createDoneButton('pronouns', true); // true = affiliate
+
+        await interaction.editReply({
+          content: '🤝 Thanks for your interest! We don\'t see your email in our member database, but we\'d love to have you as a community ally.\n\n' +
+            '🏷️ **Step 1:** Help us get to know you better! Select your pronouns below (you can choose multiple options), then click **Done** when you\'re set.\n\n' +
+            'Available options:\n• HE/HIM\n• SHE/HER\n• THEY/THEM\n• ANY/ALL',
+          components: [
+            new ActionRowBuilder().addComponents(pronounMenu),
+            doneButton
+          ]
+        });
+      }
+    } catch (error) {
+      console.error('[verify] lookupAN error:', error);
+      
+      // Record the verification failure
+      recordFailedVerification(
+        interaction.user.id,
+        email,
+        interaction.guild.id,
+        error.message
+      );
+      
+      const msg = error.message.startsWith('Invalid email')
+        ? `❌ ${error.message}. Please enter a valid address.`
+        : '❌ Verification error. Please try again or contact an admin.';
+      
+      await interaction.editReply({ content: msg });
+    }
+  } catch (err) {
+    if (err instanceof BotError && err.type === ErrorTypes.VALIDATION) {
+      recordFailedVerification(
+        interaction.user.id, 
+        'invalid-input',
+        interaction.guild.id,
+        err.message
+      );
+      
+      if (interaction.deferred) {
+        return interaction.editReply({ content: `❌ ${err.message}` });
+      } else {
+        return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+      }
+    }
+    
+    // Re-throw for global handler
+    throw err;
+  }
+}
+
+// Register modal handlers
+registerModalHandler('verify_email_modal', handleVerifyEmailModal);
+
+/**
+ * Main entry point for handling modal submissions
+ * @param {import('discord.js').ModalSubmitInteraction} interaction 
+ */
+export async function handleModals(interaction) {
+  if (!interaction.isModalSubmit()) return;
+  
+  // Rate limit check
+  const userRateLimiter = commandRateLimiter.forUser(interaction.user.id);
+  if (!(await userRateLimiter.consume(1))) {
+    return interaction.reply({ 
+      content: '⏱️ You\'re submitting forms too quickly. Please wait a moment and try again.',
+      ephemeral: true 
+    });
+  }
+  
+  // Log the interaction
+  info(interaction.guild, `Modal submission: ${interaction.customId} by ${interaction.user.tag}`);
+  
+  try {
+    // Get the appropriate handler
+    const handler = getModalHandler(interaction.customId);
+    
+    if (!handler) {
+      error(interaction.guild, `Unknown modal: ${interaction.customId}`, {
+        userId: interaction.user.id
+      });
+      
+      return interaction.reply({
+        content: '❌ Unknown form submission. Please try again or contact an admin.',
+        ephemeral: true
+      });
+    }
+    
+    // Execute the handler
+    await handler(interaction);
+    
+  } catch (err) {
+    // Let the global error handler deal with it
+    throw err;
+  }
+}
+
+// Export individual handlers for testing
+export { handleVerifyEmailModal };
+
+=== handlers/pronounsAffiliate.js ===
+// handlers/pronounsAffiliate.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import { sessionChoices } from '../utils/sessionStore.js';
+import { affiliateRoleMap, affiliateRoleLabels } from '../utils/roleMaps.js';
+
+export async function handlePronounsDoneAffiliate(interaction) {
+  const userId = interaction.user.id;
+  const { pronouns = [] } = sessionChoices.get(userId) || {};
+
+  try {
+    const allPronouns = [
+      affiliateRoleMap.pronoun_he,
+      affiliateRoleMap.pronoun_she,
+      affiliateRoleMap.pronoun_they,
+      affiliateRoleMap.pronoun_any
+    ];
+    for (const rid of allPronouns) {
+      if (interaction.member.roles.cache.has(rid)) {
+        await safeRoleAssignment(interaction.member, rid, 'remove');
+        recordRoleChange(userId, rid, interaction.guild.id, 'remove');
+      }
+    }
+    for (const key of pronouns) {
+      const rid = affiliateRoleMap[key];
+      if (rid) {
+        await safeRoleAssignment(interaction.member, rid, 'add');
+        recordRoleChange(userId, rid, interaction.guild.id, 'add');
+      }
+    }
+    info(interaction.guild, `Affiliate ${interaction.user.tag} completed pronoun selection`, { pronouns });
+
+    const tagKeys = ['affiliate_non_dsa','affiliate_dsa_non_de'];
+    const options = tagKeys.map(k => ({ label: affiliateRoleLabels[k], value: k }));
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('pick_roles_affiliate')
+      .setPlaceholder('Select your affiliate tags…')
+      .setMinValues(0)
+      .setMaxValues(options.length)
+      .addOptions(options);
+    await interaction.update({
+      content: '🌟 **Step 2:** Tell us a bit more about your connection to the movement! Select any tags that apply, then click **Done** to continue.\n\n' + 
+        'Available tags:\n• **Non-DSA Member** - If you\'re not currently a DSA member\n• **DSA Member (Non-DE)** - If you\'re a DSA member from another chapter',
+      components: [
+        new ActionRowBuilder().addComponents(menu),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('roles_done_affiliate')
+            .setLabel('Done')
+            .setStyle(ButtonStyle.Primary)
+        )
+      ]
+    });
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    throw new BotError(
+      `Error handling affiliate pronoun selection for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+
+=== handlers/pronounsMember.js ===
+// handlers/pronounsMember.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import { sessionChoices } from '../utils/sessionStore.js';
+import { memberRoleMap, memberRoleLabels } from '../utils/roleMaps.js';
+
+export async function handlePronounsDone(interaction) {
+  const userId = interaction.user.id;
+  const { pronouns = [] } = sessionChoices.get(userId) || {};
+
+  try {
+    // remove all old pronouns
+    const allPronouns = [
+      memberRoleMap.pronoun_he,
+      memberRoleMap.pronoun_she,
+      memberRoleMap.pronoun_they,
+      memberRoleMap.pronoun_any
+    ];
+    for (const r of allPronouns) {
+      if (interaction.member.roles.cache.has(r)) {
+        await safeRoleAssignment(interaction.member, r, 'remove');
+        recordRoleChange(userId, r, interaction.guild.id, 'remove');
+      }
+    }
+
+    // add chosen pronouns
+    for (const key of pronouns) {
+      const rid = memberRoleMap[key];
+      if (rid) {
+        await safeRoleAssignment(interaction.member, rid, 'add');
+        recordRoleChange(userId, rid, interaction.guild.id, 'add');
+      }
+    }
+    info(interaction.guild, `User ${interaction.user.tag} completed pronoun selection`, { pronouns });
+
+    // prepare committee menu…
+    const committeeKeys = [
+      'region_north','region_south',
+      'communications','membership_engagement',
+      'political_education','legislation_tracking',
+      'red_rabbits','palestine','migrant_rights',
+      'queer_socialists','arts_culture',
+      'housing_justice','mutual_aid','ydsa'
+    ];
+    const options = committeeKeys.map(key => ({
+      label: memberRoleLabels[key],
+      value: key
+    }));
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('pick_committees')
+      .setPlaceholder('Select your committees & working groups…')
+      .setMinValues(0)
+      .setMaxValues(options.length)
+      .addOptions(options);
+
+    // updated content with descriptions:
+    const description = `🔥 **Step 2: Find Your Home in the Movement!** 🔥
+
+    Real change happens when we organize together! Each team below is doing vital work—find where your passion and skills can make the biggest impact:
+    
+    📣 **Communications** — Amplify our message & build public support
+    ✨ **Membership-Engagement** — Welcome comrades & strengthen our community
+    📚 **Political-Education** — Deepen understanding of socialist theory & practice
+    📋 **Legislation-Tracking** — Monitor the halls of power & identify pressure points
+    🛡️ **Red-Rabbits** — Keep our community safe during actions & events
+    🇵🇸 **Palestine-Solidarity** — Stand with Palestinians against occupation & apartheid
+    🌎 **Migrant-Rights** — Fight for dignity & justice for all, regardless of borders
+    🏳️‍🌈 **Queer-Socialists** — Organize for LGBTQ+ liberation within socialist practice
+    🎨 **Arts-and-Culture** — Harness creative expression for revolutionary change
+    🏘️ **Housing-Justice** — Combat landlord power & fight for housing as a human right
+    🤲 **Mutual-Aid** — Build community resilience through direct support networks
+    
+    Select as many as you're interested in, then click **Done** below!`;
+    
+    await interaction.update({
+      content: description,
+      components: [
+        new ActionRowBuilder().addComponents(menu),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('roles_done')
+            .setLabel('Done')
+            .setStyle(ButtonStyle.Primary)
+        )
+      ]
+    });
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    throw new BotError(
+      `Error handling pronouns selection for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+
+=== handlers/rolesAffiliate.js ===
+// handlers/rolesAffiliate.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import { sessionChoices } from '../utils/sessionStore.js';
+import { affiliateRoleMap } from '../utils/roleMaps.js';
+
+export async function handleRolesDoneAffiliate(interaction) {
+  const userId = interaction.user.id;
+  const { rolesAff = [] } = sessionChoices.get(userId) || {};
+
+  try {
+    const tagKeys = ['affiliate_non_dsa','affiliate_dsa_non_de'];
+    const allTags = tagKeys.map(k => affiliateRoleMap[k]).filter(Boolean);
+
+    for (const rid of allTags) {
+      if (interaction.member.roles.cache.has(rid)) {
+        await safeRoleAssignment(interaction.member, rid, 'remove');
+        recordRoleChange(userId, rid, interaction.guild.id, 'remove');
+      }
+    }
+    for (const key of rolesAff) {
+      const rid = affiliateRoleMap[key];
+      if (rid) {
+        await safeRoleAssignment(interaction.member, rid, 'add');
+        recordRoleChange(userId, rid, interaction.guild.id, 'add');
+      }
+    }
+    sessionChoices.delete(userId);
+    info(interaction.guild, `Affiliate ${interaction.user.tag} completed role selection`, { rolesAff });
+
+    await interaction.update({
+      content: '🔒 **Our Community Rules**\n\nPlease click **Accept Rules** below to complete onboarding.',
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('rules_accept_affiliate')
+            .setLabel('Accept Rules')
+            .setStyle(ButtonStyle.Primary)
+        )
+      ]
+    });
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    throw new BotError(
+      `Error handling affiliate role selection for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+
+=== handlers/rolesMember.js ===
+// handlers/rolesMember.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import { sessionChoices } from '../utils/sessionStore.js';
+import { memberRoleMap } from '../utils/roleMaps.js';
+import { ROLE_MEMBER_UNVERIFIED, ROLE_MEMBER } from '../config.js';
+
+
+export async function handleRolesDone(interaction) {
+  const userId = interaction.user.id;
+  const { committees = [] } = sessionChoices.get(userId) || {};
+
+  const isMember = interaction.member.roles.cache.has(ROLE_MEMBER_UNVERIFIED)
+               || interaction.member.roles.cache.has(ROLE_MEMBER);
+  try {
+    const keys = [
+      'region_north','region_south',
+      'communications','membership_engagement',
+      'political_education','legislation_tracking',
+      'red_rabbits','palestine','migrant_rights',
+      'queer_socialists','arts_culture',
+      'housing_justice','mutual_aid','ydsa'
+    ];
+    const allRoles = keys.map(k => memberRoleMap[k]).filter(Boolean);
+
+    // remove old, add new
+    for (const rid of allRoles) {
+      if (interaction.member.roles.cache.has(rid)) {
+        await safeRoleAssignment(interaction.member, rid, 'remove');
+        recordRoleChange(userId, rid, interaction.guild.id, 'remove');
+      }
+    }
+    for (const key of committees) {
+      const rid = memberRoleMap[key];
+      if (rid) {
+        await safeRoleAssignment(interaction.member, rid, 'add');
+        recordRoleChange(userId, rid, interaction.guild.id, 'add');
+      }
+    }
+    sessionChoices.delete(userId);
+    info(interaction.guild, `User ${interaction.user.tag} completed committee selection`, { committees });
+
+    await interaction.update({
+      content: '📜 **Community Agreements**\n\n' +
+        'Our power comes from how we treat each other! These agreements help us build a space where everyone can participate fully and respectfully:\n\n' +
+        '1️⃣ **Be Respectful** – Engage comradely with fellow members\n' +
+        '2️⃣ **No Harassment** – Zero tolerance for hate speech or personal attacks\n' +
+        '3️⃣ **Stay On-Topic** – Keep discussions aligned with our socialist mission\n' +
+        '4️⃣ **Protect Privacy** – Do not share anyone\'s personal information\n' +
+        '5️⃣ **No Spam** – Avoid excessive messages or unsolicited links\n' +
+        '6️⃣ **Uphold DSA Values** – Solidarity, equality, and justice in all interactions\n\n' +
+        'Ready to join the struggle? Click **Accept Rules** below!',
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(isMember ? 'rules_accept_member' : 'rules_accept_affiliate')
+            .setLabel('Accept Rules')
+            .setStyle(ButtonStyle.Primary)
+        )
+      ]
+    });
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    throw new BotError(
+      `Error handling committee selection for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+
+=== handlers/rulesAccept.js ===
+// handlers/rulesAccept.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { info, warn, error } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { safeRoleAssignment } from '../utils/roleManager.js';
+import { recordRoleChange } from '../services/securityAudit.js';
+import {
+  ROLE_MEMBER_UNVERIFIED,
+  ROLE_MEMBER,
+  ROLE_AFFILIATE_UNVERIFIED,
+  ROLE_RULES_ACCEPTED,
+  LOG_CHANNEL
+} from '../config.js';
+
+export async function handleRulesAccept(interaction) {
+  const isMember = interaction.customId === 'rules_accept_member';
+  try {
+    if (isMember) {
+      // member flow…
+      await safeRoleAssignment(interaction.member, ROLE_MEMBER_UNVERIFIED, 'remove');
+      recordRoleChange(interaction.user.id, ROLE_MEMBER_UNVERIFIED, interaction.guild.id, 'remove');
+      if (!interaction.member.roles.cache.has(ROLE_MEMBER)) {
+        await safeRoleAssignment(interaction.member, ROLE_MEMBER, 'add');
+        recordRoleChange(interaction.user.id, ROLE_MEMBER, interaction.guild.id, 'add');
+      }
+      await safeRoleAssignment(interaction.member, ROLE_RULES_ACCEPTED, 'add');
+      recordRoleChange(interaction.user.id, ROLE_RULES_ACCEPTED, interaction.guild.id, 'add');
+      info(interaction.guild, `User ${interaction.user.tag} granted Member access`);
+
+      if (LOG_CHANNEL) {
+        try {
+          const ch = await interaction.guild.channels.fetch(LOG_CHANNEL);
+          if (ch?.isTextBased()) {
+            await ch.send(`✅ User ${interaction.user.tag} has been granted full Member access`);
+          }
+        } catch (e) { warn(interaction.guild, `Failed to log member access: ${e.message}`); }
+      }
+      await interaction.update({ 
+        content: '🎉 **You\'re in, comrade!** Welcome to Delaware DSA!\n\n' +
+          'You now have full access to all member channels. Head to #introductions to introduce yourself to the community, and check out #announcements to see what we\'re working on right now!', 
+        components: [] 
+      });
+    } else {
+      // affiliate flow…
+      await safeRoleAssignment(interaction.member, ROLE_RULES_ACCEPTED, 'add');
+      recordRoleChange(interaction.user.id, ROLE_RULES_ACCEPTED, interaction.guild.id, 'add');
+      info(interaction.guild, `Affiliate ${interaction.user.tag} accepted rules`);
+
+      if (LOG_CHANNEL) {
+        try {
+          const ch = await interaction.guild.channels.fetch(LOG_CHANNEL);
+          if (ch?.isTextBased()) {
+            const approvalRow = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId(`admin_verify_approve_${interaction.user.id}`).setLabel('Approve').setStyle(ButtonStyle.Success),
+              new ButtonBuilder().setCustomId(`admin_verify_deny_${interaction.user.id}`).setLabel('Deny').setStyle(ButtonStyle.Danger)
+            );
+            await ch.send({
+              content: `🔔 Affiliate ${interaction.user.tag} is awaiting approval.`,
+              components: [approvalRow]
+            });
+          }
+        } catch (logErr) {
+          warn(interaction.guild, `Failed to log affiliate approval: ${logErr.message}`);
+          // fallback DM…
+        }
+      }
+      await interaction.update({ 
+        content: '⏳ **Thanks for joining us!** A comrade will review your ally status soon.', 
+        components: [] 
+      });
+    }
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    throw new BotError(
+      `Error handling rules acceptance for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+
+=== handlers/selectMenuHandlers.js ===
+// handlers/selectMenuHandlers.js
+import { 
+  registerSelectMenuHandler, 
+  getSelectMenuHandler 
+} from '../utils/handlerRegistry.js';
+
+import { info, error } from '../utils/logger.js';
+import { sessionChoices } from '../utils/sessionStore.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { commandRateLimiter } from '../utils/rateLimit.js';
+
+/**
+ * Handle pronoun selection
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ */
+async function handlePronounSelect(interaction) {
+  const userId = interaction.user.id;
+  const prev = sessionChoices.get(userId) || {};
+  sessionChoices.set(userId, { ...prev, pronouns: interaction.values });
+  
+  info(interaction.guild, `User ${interaction.user.tag} selected pronouns: ${interaction.values.join(', ')}`);
+  await interaction.deferUpdate();
+}
+
+/**
+ * Handle committee/working group selection
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ */
+async function handleCommitteeSelect(interaction) {
+  const userId = interaction.user.id;
+  const prev = sessionChoices.get(userId) || {};
+  sessionChoices.set(userId, { ...prev, committees: interaction.values });
+  
+  info(interaction.guild, `User ${interaction.user.tag} selected committees: ${interaction.values.join(', ')}`);
+  await interaction.deferUpdate();
+}
+
+/**
+ * Handle affiliate role selection
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ */
+async function handleAffiliateRoleSelect(interaction) {
+  const userId = interaction.user.id;
+  const prev = sessionChoices.get(userId) || {};
+  sessionChoices.set(userId, { ...prev, rolesAff: interaction.values });
+  
+  info(interaction.guild, `User ${interaction.user.tag} selected affiliate roles: ${interaction.values.join(', ')}`);
+  await interaction.deferUpdate();
+}
+
+// Register select menu handlers
+registerSelectMenuHandler('pick_pronouns', handlePronounSelect);
+registerSelectMenuHandler('pick_committees', handleCommitteeSelect);
+registerSelectMenuHandler('pick_roles_affiliate', handleAffiliateRoleSelect);
+
+/**
+ * Main entry point for handling select menu interactions
+ * @param {import('discord.js').StringSelectMenuInteraction} interaction 
+ */
+export async function handleSelectMenus(interaction) {
+  // Apply rate limiting
+  const limiter = commandRateLimiter.forUser(interaction.user.id);
+  if (!(await limiter.consume(1))) {
+    return interaction.reply({
+      content: '⏱️ You\'re selecting options too quickly. Please wait a moment and try again.',
+      ephemeral: true
+    });
+  }
+  
+  // Log the interaction
+  info(interaction.guild, `Select menu: ${interaction.customId} by ${interaction.user.tag}`);
+  
+  try {
+    // Get the appropriate handler
+    const handler = getSelectMenuHandler(interaction.customId);
+    
+    if (!handler) {
+      error(interaction.guild, `No handler for select menu: ${interaction.customId}`, {
+        userId: interaction.user.id,
+        username: interaction.user.tag
+      });
+      
+      return interaction.reply({
+        content: '❌ This selection isn\'t implemented. Please contact an administrator.',
+        ephemeral: true
+      });
+    }
+    
+    // Execute the handler
+    await handler(interaction);
+    
+  } catch (err) {
+    // Let the global error handler deal with it
+    throw err;
+  }
+}
+
+// Export individual handlers for testing
+export { 
+  handlePronounSelect, 
+  handleCommitteeSelect, 
+  handleAffiliateRoleSelect 
+};
+
+=== handlers/verifyStart.js ===
+// handlers/verifyStart.js
+import {
+  ActionRowBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} from 'discord.js';
+import { info } from '../utils/logger.js';
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+
+export async function handleVerifyStart(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId('verify_email_modal')
+    .setTitle('Verify Your DSA Membership');
+
+  const emailInput = new TextInputBuilder()
+    .setCustomId('email_input')
+    .setLabel('Enter your email you used to sign up for DSA!')
+    .setPlaceholder('email@example.com')
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(emailInput));
+
+  try {
+    await interaction.showModal(modal);
+    info(interaction.guild, `Showing verify modal to ${interaction.user.tag}`);
+  } catch (err) {
+    throw new BotError(
+      `Failed to show modal for ${interaction.user.tag}: ${err.message}`,
+      ErrorTypes.DISCORD_API,
+      err.code
+    );
+  }
+}
+
+
+=== index.js ===
+// index.js
+import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { TOKEN, CLIENT, GUILD, validateRuntime } from './config.js';
+import { info, error } from './utils/logger.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { globby } from 'globby';
+
+// Create __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Initialize the client with intents
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions
+  ]
+});
+
+// Make client globally available for utilities that need it
+global.client = client;
+
+// Store commands in a collection
+client.commands = new Collection();
+
+// Load commands
+async function loadCommands() {
+  const commandsPath = path.join(__dirname, 'commands');
+  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+  
+  for (const file of commandFiles) {
+    try {
+      const filePath = path.join(commandsPath, file);
+      const module = await import(`file://${filePath}`);
+      
+      // Handle both export formats
+      if (module.execute && module.data) {
+        const commandName = module.data.name || (module.data.toJSON ? module.data.toJSON().name : null);
+        if (commandName) {
+          info(null, `Loaded command: ${commandName}`);
+          client.commands.set(commandName, module);
+        }
+      }
+    } catch (err) {
+      error(null, `Failed to load command ${file}: ${err.message}`);
+    }
+  }
+  
+  info(null, `Loaded ${client.commands.size} commands`);
+}
+
+// Register event handlers
+async function registerEvents() {
+  // Find all event files
+  const eventFiles = await globby('events/*.js', { cwd: __dirname });
+  
+  for (const filePath of eventFiles) {
+    try {
+      const fullPath = path.join(__dirname, filePath);
+      const { default: event } = await import(`file://${fullPath}`);
+      
+      if (event.once) {
+        client.once(event.name, (...args) => event.execute(...args, client));
+      } else {
+        client.on(event.name, (...args) => event.execute(...args, client));
+      }
+      
+      info(null, `Registered event: ${event.name}`);
+    } catch (err) {
+      error(null, `Failed to register event from ${filePath}: ${err.message}`);
+    }
+  }
+}
+
+// Preload handlers
+async function preloadHandlerModules() {
+  // These imports initialize the handler registry
+  await import('./handlers/buttonHandlers.js');
+  await import('./handlers/modalHandlers.js');
+  await import('./handlers/selectMenuHandlers.js');
+  await import('./handlers/helpButtons.js'); // Add our new help button handlers
+
+  
+  info(null, 'Preloaded handler modules');
+}
+
+// Run startup sequence
+async function startup() {
+  try {
+    info(null, 'Starting bot...');
+    
+    // Load commands
+    await loadCommands();
+    
+    // Register events
+    await registerEvents();
+    
+    // Preload handlers
+    await preloadHandlerModules();
+    
+    // Log in to Discord
+    await client.login(TOKEN);
+    
+    info(null, 'Startup sequence completed');
+  } catch (err) {
+    error(null, `Startup failed: ${err.message}`, { stack: err.stack });
+    process.exit(1);
+  }
+}
+
+// Handle process errors
+process.on('unhandledRejection', err => {
+  error(null, `Unhandled promise rejection: ${err.message}`, { stack: err.stack });
+});
+
+process.on('uncaughtException', err => {
+  error(null, `Uncaught exception: ${err.message}`, { stack: err.stack });
+  process.exit(1);
+});
+
+// Start the bot
+startup();
+
+=== middleware/inputSanitizer.js ===
+// middleware/inputSanitizer.js
+import { BotError, ErrorTypes } from '../utils/errorTypes.js';
+import { error } from '../utils/logger.js';
+import Joi from 'joi';
+
+// Validation schemas for different input types
+const schemas = {
+  email: Joi.string().email().required(),
+  userId: Joi.string().pattern(/^\d{17,19}$/).required(),
+  roleId: Joi.string().pattern(/^\d{17,19}$/).required(),
+  channelId: Joi.string().pattern(/^\d{17,19}$/).required(),
+  messageId: Joi.string().pattern(/^\d{17,19}$/).required(),
+  commandName: Joi.string().pattern(/^[a-z0-9_-]{1,32}$/).required(),
+  customId: Joi.string().max(100).required()
+};
+
+/**
+ * Sanitize string to prevent injection attacks
+ * @param {string} input 
+ * @returns {string}
+ */
+export function sanitizeString(input) {
+  if (typeof input !== 'string') return '';
+  
+  // Strip control chars & escape HTML entities
+  return input
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')  // Control chars
+    .replace(/[&<>"']/g, char => {                 // HTML entities
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[char];
+    });
+}
+
+/**
+ * Validate input against schema
+ * @param {string} input 
+ * @param {string} type - Schema type
+ * @returns {string} Validated input
+ * @throws {BotError} If validation fails
+ */
+export function validateInput(input, type) {
+  const schema = schemas[type];
+  if (!schema) {
+    throw new Error(`Unknown validation schema: ${type}`);
+  }
+  
+  const { error: validationError, value } = schema.validate(input);
+  if (validationError) {
+    throw BotError.validation(
+      `Invalid ${type}: ${validationError.message}`,
+      `INVALID_${type.toUpperCase()}`
+    );
+  }
+  
+  return value;
+}
+
+/**
+ * Process modal submission inputs
+ * @param {import('discord.js').ModalSubmitInteraction} interaction 
+ * @param {Object} fieldValidations - Map of field IDs to validation schemas
+ * @returns {Object} Object with validated values
+ */
+export function processModalSubmission(interaction, fieldValidations) {
+  const result = {};
+  
+  for (const [fieldId, validationType] of Object.entries(fieldValidations)) {
+    try {
+      const rawValue = interaction.fields.getTextInputValue(fieldId);
+      const sanitizedValue = sanitizeString(rawValue);
+      
+      if (validationType) {
+        result[fieldId] = validateInput(sanitizedValue, validationType);
+      } else {
+        result[fieldId] = sanitizedValue;
+      }
+    } catch (err) {
+      error(interaction.guild, `Field validation error: ${err.message}`, { 
+        fieldId,
+        validationType,
+        userId: interaction.user.id
+      });
+      
+      throw BotError.validation(
+        `Invalid input for field "${fieldId}"`,
+        'FIELD_VALIDATION_ERROR'
+      );
+    }
+  }
+  
+  return result;
+}
+
+=== package.json ===
+{
+  "name": "dsa-onboarding-bot",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0",
+    "fs-extra": "^11.3.0",
+    "globby": "^14.1.0",
+    "joi": "^17.13.3",
+    "replace-in-file": "^8.3.0",
+    "sqlit": "^2.0.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}
+
+
+=== runtimeValidation.js ===
+// runtimeValidation.js
+import config from './config.js';
+import { info, warn, error } from './utils/logger.js';
+
+/**
+ * Confirm that all configured roles & channels actually exist in the guild.
+ * @param {import('discord.js').Guild} guild
+ * @returns {Promise<boolean>}
+ */
+export async function validateRuntime(guild) {
+  if (config._validated) return true;
+  if (!guild) {
+    error(null, 'Cannot validate configuration: Guild not provided');
+    return false;
+  }
+
+  // Collect role and channel IDs
+  const roleEntries = Object.entries(config)
+    .filter(([k, v]) => k.startsWith('ROLE_') && typeof v === 'string');
+  const channelEntries = Object.entries(config)
+    .filter(([k, v]) => k.startsWith('CHANNEL_') && typeof v === 'string');
+
+  let hasError = false;
+  info(guild, `Validating ${roleEntries.length} roles…`);
+  const roles = await guild.roles.fetch();
+
+  for (const [key, id] of roleEntries) {
+    if (!roles.has(id)) {
+      error(guild, `Role "${key}" (ID ${id}) not found`);
+      hasError = true;
+    }
+  }
+
+  info(guild, `Validating ${channelEntries.length} channels…`);
+  for (const [key, id] of channelEntries) {
+    if (key === 'MESSAGE_RULES') continue;
+    try {
+      const ch = await guild.channels.fetch(id);
+      if (!ch) {
+        error(guild, `Channel "${key}" (ID ${id}) not found`);
+        hasError = true;
+      }
+    } catch (err) {
+      error(guild, `Error fetching channel "${key}": ${err.message}`);
+      hasError = true;
+    }
+  }
+
+  // Special: check that the rules message exists
+  try {
+    const rulesCh = await guild.channels.fetch(config.CHANNEL_RULES);
+    if (rulesCh?.isTextBased()) {
+      await rulesCh.messages.fetch(config.MESSAGE_RULES);
+    }
+  } catch (err) {
+    error(guild, `Rules message fetch failed: ${err.message}`);
+    hasError = true;
+  }
+
+  if (hasError) {
+    warn(guild, 'Configuration validation encountered issues.');
+  } else {
+    info(guild, 'Configuration validated successfully!');
+    config._validated = true;
+  }
+
+  return !hasError;
+}
+
+
+=== services/actionNetwork.js ===
+// services/actionNetwork.js
+import axios from 'axios';
+import Joi from 'joi';
+import config from '../config.js';
+import { info, warn, error } from '../utils/logger.js';
+import { TokenBucket } from '../utils/rateLimit.js';
+import { apiCache } from './cache.js';
+
+// Email validation schema
+const emailSchema = Joi.string().email().required();
+
+// Create token bucket: 30 requests max, refills at 1 token per 2 seconds
+const rateLimiter = new TokenBucket({
+  capacity: config.API_RATE_LIMIT.MAX_CALLS_PER_MINUTE,
+  refillRate: config.API_RATE_LIMIT.MAX_CALLS_PER_MINUTE / 60,
+  refillInterval: 1000 // refill in 1-second increments
+});
+
+// IP rotation if multiple proxies are configured
+const PROXY_LIST = config.PROXIES || []; // Add proxy config to your .env
+let currentProxyIndex = 0;
+
+function getNextProxy() {
+  if (PROXY_LIST.length === 0) return null;
+  
+  currentProxyIndex = (currentProxyIndex + 1) % PROXY_LIST.length;
+  return PROXY_LIST[currentProxyIndex];
+}
+
+/**
+ * Generate a cache key for Action Network lookups
+ * @param {string} email - Email address
+ * @returns {string} Cache key
+ */
+function generateCacheKey(email) {
+  // Normalize the email for consistent caching
+  return `an_lookup:${email.trim().toLowerCase()}`;
+}
+
+/**
+ * Look up an email in Action Network with enhanced rate limiting & proxies
+ * @param {string} email - Email address
+ * @param {Object} options - Options
+ * @returns {Promise<boolean>} - Whether email is a DSA member
+ */
+export async function lookupAN(email, options = {}) {
+  const { retries = 2, guildId = null, bypassCache = false } = options;
+  
+  // Validate email format
+  const { error: validationError } = emailSchema.validate(email);
+  if (validationError) {
+    error(null, `Invalid email format: ${validationError.message}`, { guildId });
+    throw new Error(`Invalid email: ${validationError.message}`);
+  }
+  
+  // Normalize email for consistent caching
+  const cleanEmail = email.trim().toLowerCase();
+  const cacheKey = generateCacheKey(cleanEmail);
+  
+  // Check cache first (unless bypass requested)
+  if (!bypassCache) {
+    const cachedResult = apiCache.get(cacheKey);
+    if (cachedResult !== null) {
+      info(null, `Cache hit for Action Network lookup: ${cleanEmail}`, { guildId });
+      return cachedResult;
+    }
+  }
+  
+  // Check if we can make an API call
+  const canMakeRequest = await rateLimiter.consume(1);
+  if (!canMakeRequest) {
+    warn(null, `Rate limit exceeded for Action Network API`, { guildId });
+    
+    if (retries > 0) {
+      info(null, `Retrying Action Network lookup in 2 seconds...`, { guildId });
+      await new Promise(res => setTimeout(res, 2000));
+      return lookupAN(email, { 
+        retries: retries - 1,
+        guildId,
+        bypassCache
+      });
+    }
+    
+    throw new Error('API rate limit exceeded. Please try again in a minute.');
+  }
+  
+  const filter = encodeURIComponent(`email_address eq '${cleanEmail}'`);
+  const url = `https://actionnetwork.org/api/v2/people?filter=${filter}`;
+  
+  // Configure request with potential proxy
+  const proxy = getNextProxy();
+  const requestConfig = {
+    headers: { 'OSDI-API-Token': config.AN_TOKEN },
+    timeout: config.API_TIMEOUT
+  };
+  
+  if (proxy) {
+    requestConfig.proxy = proxy;
+  }
+  
+  try {
+    const { data } = await axios.get(url, requestConfig);
+    
+    const people = data._embedded?.['osdi:people'] || [];
+    const isMember = people.some(p => 
+      p.custom_fields?.actionkit_is_member_in_good_standing === "True"
+    );
+    
+    // Cache the result
+    apiCache.set(cacheKey, isMember, 15 * 60 * 1000); // Cache for 15 minutes
+    
+    return isMember;
+    
+  } catch (err) {
+    // 429 retry with exponential backoff
+    if (err.response?.status === 429 && retries > 0) {
+      const retryAfter = Number(err.response.headers['retry-after'] || 5);
+      const backoffTime = Math.min(retryAfter * 1000, Math.pow(2, 3 - retries) * 1000);
+      
+      warn(null, `Rate limited by AN API, backing off for ${backoffTime}ms`, { guildId });
+      await new Promise(res => setTimeout(res, backoffTime));
+      
+      return lookupAN(email, { 
+        retries: retries - 1,
+        guildId,
+        bypassCache
+      });
+    }
+    
+    // Log all errors
+    if (err.response) {
+      error(null, `AN API error (${err.response.status}): ${JSON.stringify(err.response.data)}`, { guildId });
+      throw new Error(`Membership verification failed (${err.response.status}): ${err.response.data?.error || 'Unknown error'}`);
+    }
+    
+    if (err.request) {
+      error(null, 'AN API no response: ' + err.request, { guildId });
+      throw new Error('No response from membership database. Please try again later.');
+    }
+    
+    error(null, 'AN API request error: ' + err.message, { guildId });
+    throw new Error(`Verification error: ${err.message}`);
+  }
+}
+
+/**
+ * Clear the Action Network API cache
+ */
+export function clearANCache() {
+  apiCache.clear();
+  info(null, 'Action Network cache cleared');
+}
+
+/**
+ * Get Action Network API cache stats
+ */
+export function getANCacheStats() {
+  return apiCache.getStats();
+}
+
+=== services/cache.js ===
+// services/cache.js
+import { debug, info } from '../utils/logger.js';
+
+/**
+ * Simple in-memory cache with TTL support
+ */
+class Cache {
+  constructor(options = {}) {
+    this.cache = new Map();
+    this.defaultTTL = options.defaultTTL || 3600000; // Default: 1 hour
+    this.maxSize = options.maxSize || 1000;
+    this.stats = {
+      hits: 0,
+      misses: 0,
+      evictions: 0
+    };
+
+    // Start cleanup interval
+    this.cleanupInterval = setInterval(() => this.cleanup(), 60000); // Every minute
+  }
+
+  /**
+   * Get an item from the cache
+   * @param {string} key - Cache key
+   * @returns {*|null} - Cached value or null if not found/expired
+   */
+  get(key) {
+    const item = this.cache.get(key);
+    
+    if (!item) {
+      this.stats.misses++;
+      return null;
+    }
+    
+    // Check if expired
+    if (item.expiry < Date.now()) {
+      this.cache.delete(key);
+      this.stats.misses++;
+      return null;
+    }
+    
+    this.stats.hits++;
+    return item.value;
+  }
+
+  /**
+   * Store an item in the cache
+   * @param {string} key - Cache key
+   * @param {*} value - Value to store
+   * @param {number|null} ttl - TTL in ms, null for default
+   */
+  set(key, value, ttl = null) {
+    // Evict items if we're at capacity
+    if (this.cache.size >= this.maxSize) {
+      this.evictOldest();
+    }
+    
+    const expiry = Date.now() + (ttl || this.defaultTTL);
+    this.cache.set(key, { value, expiry });
+    
+    debug(null, `Cache: set key "${key}"`);
+  }
+
+  /**
+   * Remove an item from the cache
+   * @param {string} key - Cache key
+   */
+  delete(key) {
+    return this.cache.delete(key);
+  }
+
+  /**
+   * Check if key exists and isn't expired
+   * @param {string} key - Cache key
+   * @returns {boolean}
+   */
+  has(key) {
+    const item = this.cache.get(key);
+    if (!item) return false;
+    if (item.expiry < Date.now()) {
+      this.cache.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Clear all items from the cache
+   */
+  clear() {
+    this.cache.clear();
+    debug(null, 'Cache cleared');
+  }
+
+  /**
+   * Remove expired items
+   */
+  cleanup() {
+    const now = Date.now();
+    let cleaned = 0;
+    
+    for (const [key, item] of this.cache.entries()) {
+      if (item.expiry < now) {
+        this.cache.delete(key);
+        cleaned++;
+      }
+    }
+    
+    if (cleaned > 0) {
+      debug(null, `Cache cleanup: removed ${cleaned} expired items`);
+    }
+  }
+
+  /**
+   * Evict the oldest item from the cache
+   * @private
+   */
+  evictOldest() {
+    let oldestKey = null;
+    let oldestTime = Infinity;
+    
+    for (const [key, item] of this.cache.entries()) {
+      if (item.expiry < oldestTime) {
+        oldestTime = item.expiry;
+        oldestKey = key;
+      }
+    }
+    
+    if (oldestKey) {
+      this.cache.delete(oldestKey);
+      this.stats.evictions++;
+      debug(null, `Cache eviction: removed oldest key "${oldestKey}"`);
+    }
+  }
+
+  /**
+   * Stop the cleanup interval
+   */
+  dispose() {
+    clearInterval(this.cleanupInterval);
+  }
+
+  /**
+   * Get cache statistics
+   * @returns {Object} Stats object
+   */
+  getStats() {
+    return {
+      ...this.stats,
+      size: this.cache.size,
+      hitRate: this.stats.hits / (this.stats.hits + this.stats.misses || 1)
+    };
+  }
+}
+
+// Export a singleton instance for Action Network API caching
+export const apiCache = new Cache({ 
+  defaultTTL: 15 * 60 * 1000, // 15 minutes
+  maxSize: 500
+});
+
+// Export the class for custom cache instances
+export default Cache;
+
+=== services/securityAudit.js ===
+// services/securityAudit.js
+import { LOG_CHANNEL } from '../config.js';
+import { error, info } from '../utils/logger.js';
+
+// In-memory storage for security events (consider using a database in production)
+const securityEvents = [];
+const suspiciousUsers = new Map(); // userId -> count of suspicious actions
+
+/**
+ * Record a security event
+ * @param {Object} event 
+ */
+export function recordSecurityEvent(event) {
+  const { userId, type, details, guildId } = event;
+  const timestamp = new Date().toISOString();
+  
+  const securityEvent = {
+    userId,
+    type,
+    details,
+    guildId,
+    timestamp
+  };
+  
+  // Add to in-memory log
+  securityEvents.push(securityEvent);
+  
+  // Track suspicious users
+  if (event.suspicious) {
+    if (!suspiciousUsers.has(userId)) {
+      suspiciousUsers.set(userId, 0);
+    }
+    suspiciousUsers.set(userId, suspiciousUsers.get(userId) + 1);
+    
+    // Alert if user reaches suspicious threshold
+    if (suspiciousUsers.get(userId) >= 3) {
+      alertSuspiciousActivity(userId, guildId);
+    }
+  }
+  
+  // Limit in-memory storage
+  if (securityEvents.length > 1000) {
+    securityEvents.shift();
+  }
+  
+  return securityEvent;
+}
+
+/**
+ * Alert about suspicious user activity
+ * @param {string} userId 
+ * @param {string} guildId 
+ */
+async function alertSuspiciousActivity(userId, guildId) {
+  try {
+    // Log the alert
+    error(null, `SECURITY ALERT: User ${userId} has performed multiple suspicious actions`, {
+      userId,
+      suspiciousCount: suspiciousUsers.get(userId)
+    });
+    
+    // Get user events
+    const userEvents = securityEvents.filter(e => e.userId === userId);
+    
+    // If we have a guild client, send to security log channel
+    if (guildId && LOG_CHANNEL) {
+      const guild = await global.client?.guilds.fetch(guildId).catch(() => null);
+      if (guild) {
+        const channel = await guild.channels.fetch(LOG_CHANNEL).catch(() => null);
+        if (channel?.isTextBased()) {
+          const eventList = userEvents
+            .slice(-5)
+            .map(e => `- ${e.timestamp}: ${e.type} (${e.details})`)
+            .join('\n');
+          
+          await channel.send(
+            `🚨 **SECURITY ALERT**: User <@${userId}> has performed ${suspiciousUsers.get(userId)} suspicious actions!\n\nRecent events:\n${eventList}`
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to send security alert:', err);
+  }
+}
+
+/**
+ * Record a failed verification attempt
+ * @param {string} userId 
+ * @param {string} email 
+ * @param {string} guildId 
+ * @param {string} reason 
+ */
+export function recordFailedVerification(userId, email, guildId, reason) {
+  return recordSecurityEvent({
+    userId,
+    type: 'FAILED_VERIFICATION',
+    details: `Failed verification with email: ${email}. Reason: ${reason}`,
+    guildId,
+    suspicious: true
+  });
+}
+
+/**
+ * Record a successful verification
+ * @param {string} userId 
+ * @param {string} email 
+ * @param {string} guildId 
+ */
+export function recordSuccessfulVerification(userId, email, guildId) {
+  return recordSecurityEvent({
+    userId,
+    type: 'SUCCESSFUL_VERIFICATION',
+    details: `Verified with email: ${email}`,
+    guildId,
+    suspicious: false
+  });
+}
+
+/**
+ * Record a role change
+ * @param {string} userId 
+ * @param {string} roleId 
+ * @param {string} guildId 
+ * @param {'add'|'remove'} action 
+ */
+export function recordRoleChange(userId, roleId, guildId, action) {
+  return recordSecurityEvent({
+    userId,
+    type: 'ROLE_CHANGE',
+    details: `${action.toUpperCase()}ED role ${roleId}`,
+    guildId,
+    suspicious: false
+  });
+}
+
+/**
+ * Get all security events for a user
+ * @param {string} userId 
+ * @returns {Array}
+ */
+export function getUserEvents(userId) {
+  return securityEvents.filter(e => e.userId === userId);
+}
+
+=== utils/componentFactory.js ===
+// utils/componentFactory.js
+/**
+ * Factory for creating Discord UI components with consistent styling
+ */
+import { 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} from 'discord.js';
+
+/**
+ * Create a primary button
+ * @param {string} customId - Button customId
+ * @param {string} label - Button label
+ * @param {ButtonStyle} style - Button style (defaults to PRIMARY)
+ * @returns {ButtonBuilder} - Button component
+ */
+export function createButton(customId, label, style = ButtonStyle.Primary) {
+  return new ButtonBuilder()
+    .setCustomId(customId)
+    .setLabel(label)
+    .setStyle(style);
+}
+
+/**
+ * Create success button
+ * @param {string} customId - Button customId
+ * @param {string} label - Button label
+ * @returns {ButtonBuilder} - Success button
+ */
+export function createSuccessButton(customId, label) {
+  return createButton(customId, label, ButtonStyle.Success);
+}
+
+/**
+ * Create danger button
+ * @param {string} customId - Button customId
+ * @param {string} label - Button label
+ * @returns {ButtonBuilder} - Danger button
+ */
+export function createDangerButton(customId, label) {
+  return createButton(customId, label, ButtonStyle.Danger);
+}
+
+/**
+ * Create a row of buttons
+ * @param  {...ButtonBuilder} buttons - Buttons to add to row
+ * @returns {ActionRowBuilder} - Row of buttons
+ */
+export function createButtonRow(...buttons) {
+  return new ActionRowBuilder().addComponents(buttons);
+}
+
+/**
+ * Create a string select menu
+ * @param {string} customId - Select menu customId
+ * @param {string} placeholder - Placeholder text
+ * @param {Array} options - Array of options, each with label and value
+ * @param {Object} settings - Additional settings like minValues, maxValues
+ * @returns {StringSelectMenuBuilder} - Select menu component
+ */
+export function createSelectMenu(customId, placeholder, options, settings = {}) {
+  const { minValues = 0, maxValues = options.length } = settings;
+  
+  return new StringSelectMenuBuilder()
+    .setCustomId(customId)
+    .setPlaceholder(placeholder)
+    .setMinValues(minValues)
+    .setMaxValues(maxValues)
+    .addOptions(options);
+}
+
+/**
+ * Create a modal
+ * @param {string} customId - Modal customId
+ * @param {string} title - Modal title
+ * @param {Array} inputs - Array of input objects with id, label, style, etc.
+ * @returns {ModalBuilder} - Modal component
+ */
+export function createModal(customId, title, inputs) {
+  const modal = new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle(title);
+    
+  for (const input of inputs) {
+    const { id, label, placeholder = '', required = true, style = TextInputStyle.Short, value = null } = input;
+    
+    const textInput = new TextInputBuilder()
+      .setCustomId(id)
+      .setLabel(label)
+      .setRequired(required)
+      .setStyle(style);
+      
+    if (placeholder) {
+      textInput.setPlaceholder(placeholder);
+    }
+    
+    if (value) {
+      textInput.setValue(value);
+    }
+    
+    modal.addComponents(new ActionRowBuilder().addComponents(textInput));
+  }
+  
+  return modal;
+}
+
+/**
+ * Create an email verification modal
+ * @returns {ModalBuilder} - Email verification modal
+ */
+export function createEmailVerificationModal() {
+  return createModal(
+    'verify_email_modal',
+    'Verify Your DSA Membership',
+    [
+      {
+        id: 'email_input',
+        label: 'Enter your Action Network email',
+        placeholder: 'email@example.com',
+        required: true,
+        style: TextInputStyle.Short
+      }
+    ]
+  );
+}
+
+/**
+ * Create onboarding buttons
+ * @returns {ActionRowBuilder} - Row with onboarding buttons
+ */
+export function createOnboardingButtons() {
+  return createButtonRow(
+    createSuccessButton('verify_start', 'I am a member'),
+    createButton('affiliate_start', 'I\'m an affiliate', ButtonStyle.Secondary)
+  );
+}
+
+/**
+ * Create admin approval buttons for a user
+ * @param {string} userId - User ID to approve/deny
+ * @returns {ActionRowBuilder} - Row with approval buttons
+ */
+export function createAdminApprovalButtons(userId) {
+  return createButtonRow(
+    createSuccessButton(`admin_verify_approve_${userId}`, 'Approve'),
+    createDangerButton(`admin_verify_deny_${userId}`, 'Deny')
+  );
+}
+
+/**
+ * Create pronoun selection menu
+ * @returns {StringSelectMenuBuilder} - Pronoun selection menu
+ */
+export function createPronounSelectionMenu() {
+  return createSelectMenu(
+    'pick_pronouns',
+    'Select your pronouns…',
+    [
+      { label: 'HE/HIM',    value: 'pronoun_he'   },
+      { label: 'SHE/HER',   value: 'pronoun_she'  },
+      { label: 'THEY/THEM', value: 'pronoun_they' },
+      { label: 'ANY/ALL',   value: 'pronoun_any'  }
+    ],
+    { minValues: 1 }
+  );
+}
+
+/**
+ * Create a "Done" button for a specific step
+ * @param {string} step - Step name (e.g., 'pronouns', 'roles')
+ * @param {boolean} isAffiliate - Whether this is for an affiliate
+ * @returns {ActionRowBuilder} - Row with done button
+ */
+export function createDoneButton(step, isAffiliate = false) {
+  const suffix = isAffiliate ? '_affiliate' : '';
+  return createButtonRow(
+    createButton(`${step}_done${suffix}`, 'Done')
+  );
+}
+
+=== utils/errorTypes.js ===
+/**
+ * Error types enum to categorize errors
+ * @readonly
+ */
+export const ErrorTypes = Object.freeze({
+  PERMISSION: 'permission',
+  API: 'api', 
+  VALIDATION: 'validation',
+  RATE_LIMIT: 'rate_limit',
+  DISCORD_API: 'discord_api',
+  ROLE_MANAGEMENT: 'role_management',
+  CONFIGURATION: 'configuration',
+  COMMAND: 'command',
+  UNKNOWN: 'unknown'
+});
+
+/**
+ * Custom error class with type and code
+ */
+export class BotError extends Error {
+  constructor(message, type = ErrorTypes.UNKNOWN, code = null) {
+    super(message);
+    this.name = 'BotError';
+    this.type = type;
+    this.code = code;
+  }
+  
+  // Static factory methods for common error types
+  static permission(message, code = null) {
+    return new BotError(message, ErrorTypes.PERMISSION, code);
+  }
+  
+  static api(message, code = null) {
+    return new BotError(message, ErrorTypes.API, code);
+  }
+  
+  static validation(message, code = null) {
+    return new BotError(message, ErrorTypes.VALIDATION, code);
+  }
+  
+  static roleManagement(message, code = null) {
+    return new BotError(message, ErrorTypes.ROLE_MANAGEMENT, code);
+  }
+}
+
+=== utils/handlerRegistry.js ===
+// utils/handlerRegistry.js
+/**
+ * Central registry for all interaction handlers
+ * Provides a consistent interface for registering and retrieving handlers
+ */
+import { info, error } from './logger.js';
+import { withErrorHandler } from './withErrorHandler.js';
+import { BotError, ErrorTypes } from './errorTypes.js';
+
+// Handler collections
+const buttonHandlers = new Map();
+const selectMenuHandlers = new Map();
+const modalHandlers = new Map();
+const commandHandlers = new Map();
+
+/**
+ * Register a button handler
+ * @param {string|RegExp} id - Button customId or pattern to match
+ * @param {Function} handler - Handler function
+ * @param {Object} options - Options for the handler
+ */
+export function registerButtonHandler(id, handler, options = {}) {
+  buttonHandlers.set(id, {
+    handler: withErrorHandler(handler, options),
+    options
+  });
+}
+
+/**
+ * Register a select menu handler
+ * @param {string|RegExp} id - Select menu customId or pattern to match
+ * @param {Function} handler - Handler function
+ * @param {Object} options - Options for the handler
+ */
+export function registerSelectMenuHandler(id, handler, options = {}) {
+  selectMenuHandlers.set(id, {
+    handler: withErrorHandler(handler, options),
+    options
+  });
+}
+
+/**
+ * Register a modal handler
+ * @param {string|RegExp} id - Modal customId or pattern to match
+ * @param {Function} handler - Handler function
+ * @param {Object} options - Options for the handler
+ */
+export function registerModalHandler(id, handler, options = {}) {
+  modalHandlers.set(id, {
+    handler: withErrorHandler(handler, options),
+    options
+  });
+}
+
+/**
+ * Register a command handler
+ * @param {string} name - Command name
+ * @param {Function} handler - Handler function
+ * @param {Object} options - Options for the handler
+ */
+export function registerCommandHandler(name, handler, options = {}) {
+  commandHandlers.set(name, {
+    handler: withErrorHandler(handler, options),
+    options
+  });
+}
+
+/**
+ * Find handler for a given customId
+ * @param {Map} handlers - Map of handlers
+ * @param {string} customId - ID to match
+ * @returns {Function|null} - Handler function or null if not found
+ */
+function findHandler(handlers, customId) {
+  // First try exact match
+  if (handlers.has(customId)) {
+    return handlers.get(customId).handler;
+  }
+  
+  // Then try regex patterns
+  for (const [pattern, handlerObj] of handlers.entries()) {
+    if (pattern instanceof RegExp && pattern.test(customId)) {
+      return handlerObj.handler;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get button handler for customId
+ * @param {string} customId - Button customId
+ * @returns {Function|null} - Handler function or null if not found
+ */
+export function getButtonHandler(customId) {
+  return findHandler(buttonHandlers, customId);
+}
+
+/**
+ * Get select menu handler for customId
+ * @param {string} customId - Select menu customId
+ * @returns {Function|null} - Handler function or null if not found
+ */
+export function getSelectMenuHandler(customId) {
+  return findHandler(selectMenuHandlers, customId);
+}
+
+/**
+ * Get modal handler for customId
+ * @param {string} customId - Modal customId
+ * @returns {Function|null} - Handler function or null if not found
+ */
+export function getModalHandler(customId) {
+  return findHandler(modalHandlers, customId);
+}
+
+/**
+ * Get command handler for name
+ * @param {string} name - Command name
+ * @returns {Function|null} - Handler function or null if not found
+ */
+export function getCommandHandler(name) {
+  if (commandHandlers.has(name)) {
+    return commandHandlers.get(name).handler;
+  }
+  return null;
+}
+
+/**
+ * Clear all handlers (useful for tests/reloads)
+ */
+export function clearHandlers() {
+  buttonHandlers.clear();
+  selectMenuHandlers.clear();
+  modalHandlers.clear();
+  commandHandlers.clear();
+}
+
+=== utils/logger.js ===
+import { LOG_CHANNEL } from '../config.js';
+
+/**
+ * Log severity levels
+ * @readonly
+ */
+export const LogLevels = Object.freeze({
+  DEBUG: 'debug',
+  INFO: 'info',
+  WARN: 'warn',
+  ERROR: 'error',
+  CRITICAL: 'critical'
+});
+
+/**
+ * Format timestamp for logging
+ * @returns {string} Formatted timestamp
+ */
+function timestamp() {
+  return new Date().toISOString();
+}
+
+/**
+ * Log a message to console and optionally to Discord
+ * @param {import('discord.js').Guild} guild - Discord guild
+ * @param {string} level - Log level from LogLevels
+ * @param {string} message - Log message
+ * @param {Object} meta - Additional metadata
+ * @returns {Promise<void>}
+ */
+export async function log(guild, level, message, meta = {}) {
+  // Always log to console with timestamp
+  const consoleMessage = `[${timestamp()}] [${level.toUpperCase()}] ${message}`;
+  
+  // Choose console method based on level
+  switch (level) {
+    case LogLevels.DEBUG:
+      console.debug(consoleMessage, meta);
+      break;
+    case LogLevels.INFO:
+      console.info(consoleMessage, meta);
+      break;
+    case LogLevels.WARN:
+      console.warn(consoleMessage, meta);
+      break;
+    case LogLevels.ERROR:
+    case LogLevels.CRITICAL:
+      console.error(consoleMessage, meta);
+      break;
+    default:
+      console.log(consoleMessage, meta);
+  }
+  
+  // Log to Discord channel for WARN, ERROR, and CRITICAL levels
+  if (
+    guild && 
+    LOG_CHANNEL && 
+    [LogLevels.WARN, LogLevels.ERROR, LogLevels.CRITICAL].includes(level)
+  ) {
+    try {
+      const ch = await guild.channels.fetch(LOG_CHANNEL);
+      if (ch?.isTextBased()) {
+        // Format emoji based on level
+        const emoji = level === LogLevels.WARN ? '⚠️' : 
+                     level === LogLevels.ERROR ? '❌' :
+                     level === LogLevels.CRITICAL ? '🚨' : '📝';
+        
+        // Format metadata as string if present
+        let metaStr = '';
+        if (Object.keys(meta).length > 0) {
+          metaStr = '\n```json\n' + JSON.stringify(meta, null, 2) + '\n```';
+        }
+        
+        // Send to channel
+        await ch.send(`${emoji} **${level.toUpperCase()}**: ${message}${metaStr}`);
+      }
+    } catch (e) {
+      console.error('Logger failed to send to Discord:', e);
+    }
+  }
+}
+
+// Convenience methods
+export const debug = (guild, message, meta) => log(guild, LogLevels.DEBUG, message, meta);
+export const info = (guild, message, meta) => log(guild, LogLevels.INFO, message, meta);
+export const warn = (guild, message, meta) => log(guild, LogLevels.WARN, message, meta);
+export const error = (guild, message, meta) => log(guild, LogLevels.ERROR, message, meta);
+export const critical = (guild, message, meta) => log(guild, LogLevels.CRITICAL, message, meta);
+
+=== utils/permissionChecks.js ===
+// utils/permissionChecks.js
+import { PermissionsBitField } from 'discord.js';
+import { error } from './logger.js';
+import { BotError, ErrorTypes } from './errorTypes.js';
+
+/**
+ * Command permission requirements map
+ */
+const COMMAND_PERMISSIONS = {
+  'verify': [],
+  'onboard': [PermissionsBitField.Flags.ManageGuild],
+  'confirm-affiliate': [PermissionsBitField.Flags.ManageRoles],
+  'roles': [],
+  'rules': [],
+  'help': []
+};
+
+/**
+ * Check if user has required permissions for a command
+ * @param {import('discord.js').GuildMember} member 
+ * @param {string} commandName 
+ * @returns {boolean}
+ * @throws {BotError} If permissions check fails
+ */
+export function checkCommandPermissions(member, commandName) {
+  // Default to no special permissions required
+  const requiredPermissions = COMMAND_PERMISSIONS[commandName] || [];
+  
+  // Skip check if no permissions required
+  if (requiredPermissions.length === 0) return true;
+  
+  // Check member permissions
+  const missingPermissions = requiredPermissions.filter(
+    perm => !member.permissions.has(perm)
+  );
+  
+  if (missingPermissions.length > 0) {
+    throw BotError.permission(
+      `Missing required permissions for ${commandName}`,
+      'MISSING_PERMISSIONS'
+    );
+  }
+  
+  return true;
+}
+
+/**
+ * Check if a button interaction is allowed
+ * @param {import('discord.js').ButtonInteraction} interaction 
+ * @returns {boolean}
+ */
+export function canUseButton(interaction) {
+  // Admin buttons are prefixed with 'admin_'
+  if (interaction.customId.startsWith('admin_')) {
+    const hasManageRoles = interaction.member.permissions.has(
+      PermissionsBitField.Flags.ManageRoles
+    );
+    
+    if (!hasManageRoles) {
+      throw BotError.permission(
+        'This button requires Manage Roles permission',
+        'ADMIN_BUTTON'
+      );
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Ensures the bot has permission to manage roles in the guild,
+ * and returns the bot's highest role position for hierarchy checks.
+ * @param {import('discord.js').Guild} guild
+ * @returns {Promise<number>} The position of the bot's highest role.
+ * @throws {BotError} If the bot lacks Manage Roles permission.
+ */
+export async function ensureBotHasRolePermissions(guild) {
+  try {
+    // Fetch the bot as a GuildMember
+    const botMember = await guild.members.fetch(guild.client.user.id);
+
+    // Check that the bot has the Manage Roles permission
+    if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      throw BotError.permission(
+        'Bot lacks required permission: Manage Roles',
+        'BOT_MISSING_PERMISSION'
+      );
+    }
+
+    // Return the position of the bot's highest role for hierarchy comparisons
+    return botMember.roles.highest.position;
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    
+    error(guild, `Failed to check bot permissions: ${err.message}`);
+    throw BotError.permission(
+      'Failed to verify bot permissions',
+      'PERMISSION_CHECK_FAILED'
+    );
+  }
+}
+
+=== utils/rateLimit.js ===
+// utils/rateLimit.js
+import { error } from './logger.js';
+
+/**
+ * Token Bucket Algorithm for rate limiting
+ * Handles both API and user/guild rate limiting needs
+ */
+export class TokenBucket {
+  /**
+   * Create a new token bucket
+   * @param {Object} options
+   * @param {number} options.capacity - Maximum tokens
+   * @param {number} options.refillRate - Tokens added per interval
+   * @param {number} options.refillInterval - Interval in ms
+   */
+  constructor({ capacity, refillRate, refillInterval = 1000 }) {
+    this.capacity = capacity;
+    this.tokens = capacity;
+    this.refillRate = refillRate;
+    this.refillInterval = refillInterval;
+    this.lastRefill = Date.now();
+    this.userBuckets = new Map();
+    this.guildBuckets = new Map();
+  }
+  
+  /**
+   * Refill tokens based on elapsed time
+   * @private
+   */
+  _refill() {
+    const now = Date.now();
+    const timePassed = now - this.lastRefill;
+    const intervalsElapsed = Math.floor(timePassed / this.refillInterval);
+    
+    if (intervalsElapsed > 0) {
+      this.tokens = Math.min(
+        this.capacity, 
+        this.tokens + (intervalsElapsed * this.refillRate)
+      );
+      this.lastRefill = now;
+    }
+  }
+  
+  /**
+   * Consume tokens if available
+   * @param {number} count - Tokens to consume
+   * @returns {Promise<boolean>} - Whether tokens were consumed
+   */
+  async consume(count = 1) {
+    this._refill();
+    
+    if (this.tokens >= count) {
+      this.tokens -= count;
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Get a user-specific bucket
+   * @param {string} userId 
+   * @returns {TokenBucket}
+   */
+  forUser(userId) {
+    if (!this.userBuckets.has(userId)) {
+      this.userBuckets.set(userId, new TokenBucket({
+        capacity: this.capacity,
+        refillRate: this.refillRate,
+        refillInterval: this.refillInterval
+      }));
+    }
+    
+    return this.userBuckets.get(userId);
+  }
+  
+  /**
+   * Get a guild-specific bucket
+   * @param {string} guildId 
+   * @returns {TokenBucket}
+   */
+  forGuild(guildId) {
+    if (!this.guildBuckets.has(guildId)) {
+      this.guildBuckets.set(guildId, new TokenBucket({
+        capacity: this.capacity,
+        refillRate: this.refillRate,
+        refillInterval: this.refillInterval
+      }));
+    }
+    
+    return this.guildBuckets.get(guildId);
+  }
+}
+
+/**
+ * Command rate limiter with per-user tracking
+ */
+export const commandRateLimiter = new TokenBucket({
+  capacity: 10,  // 10 commands
+  refillRate: 2, // 2 per minute
+  refillInterval: 30000 // 30 seconds
+});
+
+=== utils/roleManager.js ===
+// utils/roleManager.js
+import { PermissionsBitField } from 'discord.js';
+import { info, warn, error } from './logger.js';
+import { recordRoleChange } from '../db/models/audit.js';
+import { BotError, ErrorTypes } from './errorTypes.js';
+
+/**
+ * Safely add or remove a role from a guild member
+ * @param {import('discord.js').GuildMember} member - Member to modify
+ * @param {string} roleId - Role ID to add/remove
+ * @param {'add'|'remove'} operation - Whether to add or remove
+ * @param {Object} options - Additional options
+ * @returns {Promise<boolean>} - Whether operation succeeded
+ */
+export async function safeRoleAssignment(member, roleId, operation = 'add', options = {}) {
+  const { maxRetries = 3, recordAudit = true } = options;
+  const guild = member.guild;
+
+  try {
+    // Fetch the role
+    const role = await guild.roles.fetch(roleId).catch(() => null);
+    if (!role) {
+      throw new BotError(
+        `Role with ID ${roleId} does not exist`,
+        ErrorTypes.ROLE_MANAGEMENT,
+        'ROLE_NOT_FOUND'
+      );
+    }
+
+    // Ensure bot has Manage Roles permission
+    const botMember = await guild.members.fetch(guild.client.user.id);
+    if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      throw new BotError(
+        'Bot lacks required permission: Manage Roles',
+        ErrorTypes.PERMISSION,
+        'BOT_MISSING_PERMISSION'
+      );
+    }
+
+    // Check role hierarchy
+    if (role.position >= botMember.roles.highest.position) {
+      throw new BotError(
+        `Cannot modify role ${role.name}: positioned higher than bot's roles`,
+        ErrorTypes.PERMISSION,
+        'ROLE_HIERARCHY_VIOLATION'
+      );
+    }
+
+    // If member already has/doesn't have the role, skip operation
+    const hasRole = member.roles.cache.has(roleId);
+    if ((operation === 'add' && hasRole) || (operation === 'remove' && !hasRole)) {
+      return true;
+    }
+
+    // Perform role change with retries
+    let attempts = 0;
+    while (attempts < maxRetries) {
+      try {
+        if (operation === 'add') {
+          await member.roles.add(role);
+        } else if (operation === 'remove') {
+          await member.roles.remove(role);
+        } else {
+          throw new BotError(
+            `Invalid operation: ${operation}`,
+            ErrorTypes.VALIDATION,
+            'INVALID_ROLE_OPERATION'
+          );
+        }
+        
+        // Record the change if requested
+        if (recordAudit) {
+          recordRoleChange(member.id, roleId, guild.id, operation);
+        }
+        
+        return true;
+      } catch (err) {
+        attempts++;
+        warn(guild, `Attempt ${attempts}/${maxRetries} failed to ${operation} role ${role.name}:`, {
+          userId: member.id,
+          roleId,
+          error: err.message
+        });
+
+        // If rate-limited or transient, wait and retry
+        if ([429, 10008, 10029].includes(err.code)) {
+          await new Promise(res => setTimeout(res, 1000 * attempts));
+          continue;
+        }
+
+        // For other errors, do not retry
+        throw err;
+      }
+    }
+
+    throw new BotError(
+      `Failed to ${operation} role ${role.name} after ${maxRetries} attempts`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      'MAX_RETRIES_EXCEEDED'
+    );
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    
+    throw new BotError(
+      `Error in role management: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+/**
+ * Update roles in batch (add some, remove others)
+ * @param {import('discord.js').GuildMember} member - Member to modify
+ * @param {string[]} rolesToAdd - Role IDs to add
+ * @param {string[]} rolesToRemove - Role IDs to remove
+ * @param {Object} options - Additional options
+ * @returns {Promise<Object>} - Results of operations
+ */
+export async function batchUpdateRoles(member, rolesToAdd = [], rolesToRemove = [], options = {}) {
+  const { recordAudit = true, maxRetries = 3 } = options;
+  const guild = member.guild;
+
+  // Skip if no changes needed
+  if (rolesToAdd.length === 0 && rolesToRemove.length === 0) {
+    return { added: [], removed: [], failed: [] };
+  }
+  
+  // Log the planned changes
+  info(guild, `Batch role update for ${member.user.tag}: +${rolesToAdd.length}/-${rolesToRemove.length} roles`, {
+    userId: member.id,
+    adding: rolesToAdd,
+    removing: rolesToRemove
+  });
+  
+  try {
+    // Prepare final role set by getting current roles
+    const currentRoleIds = [...member.roles.cache.keys()];
+    
+    // Create new role set: remove the roles to remove, add the roles to add
+    const newRoleIds = currentRoleIds
+      .filter(id => !rolesToRemove.includes(id))
+      .concat(rolesToAdd.filter(id => !currentRoleIds.includes(id)));
+    
+    // If no actual changes, skip update
+    if (JSON.stringify(currentRoleIds.sort()) === JSON.stringify(newRoleIds.sort())) {
+      return { added: [], removed: [], failed: [] };
+    }
+    
+    // Ensure bot has permissions
+    const botMember = await guild.members.fetch(guild.client.user.id);
+    if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      throw new BotError(
+        'Bot lacks required permission: Manage Roles',
+        ErrorTypes.PERMISSION,
+        'BOT_MISSING_PERMISSION'
+      );
+    }
+    
+    // Check role hierarchy for all roles
+    const rolesToCheck = [...new Set([...rolesToAdd, ...rolesToRemove])];
+    const highestBotRole = botMember.roles.highest.position;
+    
+    for (const roleId of rolesToCheck) {
+      const role = await guild.roles.fetch(roleId).catch(() => null);
+      if (!role) {
+        warn(guild, `Role ID ${roleId} not found, skipping`, { userId: member.id });
+        continue;
+      }
+      
+      if (role.position >= highestBotRole) {
+        warn(guild, `Role ${role.name} (${roleId}) positioned higher than bot's roles, skipping`, { userId: member.id });
+        continue;
+      }
+    }
+    
+    // Attempt the batch update with retries
+    let attempts = 0;
+    let success = false;
+    let lastError = null;
+    
+    while (attempts < maxRetries && !success) {
+      try {
+        // Use setRoles for a true atomic operation
+        await member.roles.set(newRoleIds);
+        success = true;
+      } catch (err) {
+        attempts++;
+        lastError = err;
+        warn(guild, `Batch role update failed (attempt ${attempts}/${maxRetries}): ${err.message}`, {
+          userId: member.id
+        });
+        
+        // If rate-limited, wait and retry
+        if (err.code === 429) {
+          const retryAfter = err.httpStatus === 429 ? err.retryAfter : 1;
+          await new Promise(res => setTimeout(res, retryAfter * 1000));
+          continue;
+        }
+        
+        // For serious errors, bail out and try individual updates
+        if (attempts >= maxRetries || ![429, 10008, 10029].includes(err.code)) {
+          warn(guild, 'Batch role update failed, falling back to individual updates');
+          break;
+        }
+      }
+    }
+    
+    // If batch update succeeded
+    if (success) {
+      // Record individual changes for audit log
+      if (recordAudit) {
+        // Only audit roles that actually changed
+        const actuallyAdded = rolesToAdd.filter(id => !currentRoleIds.includes(id));
+        const actuallyRemoved = rolesToRemove.filter(id => currentRoleIds.includes(id));
+        
+        for (const roleId of actuallyAdded) {
+          recordRoleChange(member.id, roleId, guild.id, 'add');
+        }
+        for (const roleId of actuallyRemoved) {
+          recordRoleChange(member.id, roleId, guild.id, 'remove');
+        }
+      }
+      
+      return {
+        added: rolesToAdd,
+        removed: rolesToRemove,
+        failed: []
+      };
+    }
+    
+    // If batch update failed, fall back to individual updates
+    warn(guild, 'Falling back to individual role updates', { userId: member.id });
+    
+    const results = {
+      added: [],
+      removed: [],
+      failed: []
+    };
+    
+    // Process removals first
+    for (const roleId of rolesToRemove) {
+      try {
+        await safeRoleAssignment(member, roleId, 'remove', { recordAudit, maxRetries: 2 });
+        results.removed.push(roleId);
+      } catch (err) {
+        warn(guild, `Failed to remove role ${roleId}:`, {
+          userId: member.id,
+          error: err.message
+        });
+        results.failed.push({ roleId, operation: 'remove', error: err.message });
+      }
+    }
+
+    // Then process additions
+    for (const roleId of rolesToAdd) {
+      try {
+        await safeRoleAssignment(member, roleId, 'add', { recordAudit, maxRetries: 2 });
+        results.added.push(roleId);
+      } catch (err) {
+        warn(guild, `Failed to add role ${roleId}:`, {
+          userId: member.id,
+          error: err.message
+        });
+        results.failed.push({ roleId, operation: 'add', error: err.message });
+      }
+    }
+    
+    return results;
+  } catch (err) {
+    if (err instanceof BotError) throw err;
+    
+    throw new BotError(
+      `Batch role update error: ${err.message}`,
+      ErrorTypes.ROLE_MANAGEMENT,
+      err.code
+    );
+  }
+}
+
+/**
+ * Update roles based on keys in a role map
+ * @param {import('discord.js').GuildMember} member - Member to modify
+ * @param {Object} roleMap - Map of keys to role IDs
+ * @param {string[]} selectedKeys - Keys selected by the user
+ * @param {string[]} allKeys - All possible keys in this category
+ * @param {Object} options - Additional options
+ * @returns {Promise<Object>} - Results of operations
+ */
+export async function updateRolesByKeys(member, roleMap, selectedKeys = [], allKeys = [], options = {}) {
+  // If allKeys not provided, use all keys from the roleMap
+  if (!allKeys.length) {
+    allKeys = Object.keys(roleMap);
+  }
+  
+  // Determine which roles to add/remove
+  const rolesToAdd = selectedKeys
+    .map(key => roleMap[key])
+    .filter(Boolean);
+    
+  const rolesToRemove = allKeys
+    .filter(key => !selectedKeys.includes(key))
+    .map(key => roleMap[key])
+    .filter(Boolean);
+  
+  // Perform the batch update
+  return batchUpdateRoles(member, rolesToAdd, rolesToRemove, options);
+}
+
+=== utils/roleMaps.js ===
+// Import all role IDs from config
+import {
+  ROLE_PRONOUN_HE,
+  ROLE_PRONOUN_SHE,
+  ROLE_PRONOUN_THEY,
+  ROLE_PRONOUN_ANY,
+  ROLE_NORTH,
+  ROLE_SOUTH,
+  ROLE_COMMUNICATIONS,
+  ROLE_MEMBERSHIP_ENGAGEMENT,
+  ROLE_POLITICAL_EDUCATION,
+  ROLE_LEGISLATION_TRACKING,
+  ROLE_RED_RABBITS,
+  ROLE_PALESTINE,
+  ROLE_MIGRANT_RIGHTS,
+  ROLE_QUEER_SOCIALISTS,
+  ROLE_ARTS_CULTURE,
+  ROLE_HOUSING_JUSTICE,
+  ROLE_MUTUAL_AID,
+  ROLE_YDSA,
+  ROLE_NON_DSA_MEMBER,
+  ROLE_DSA_NON_DE
+} from '../config.js';
+
+/**
+ * Role map for DSA members
+ * Key: internal role identifier, Value: Discord role ID
+ */
+export const memberRoleMap = {
+  // Pronouns
+  pronoun_he: ROLE_PRONOUN_HE,
+  pronoun_she: ROLE_PRONOUN_SHE,
+  pronoun_they: ROLE_PRONOUN_THEY,
+  pronoun_any: ROLE_PRONOUN_ANY,
+  
+  // Regions
+  region_north: ROLE_NORTH,
+  region_south: ROLE_SOUTH,
+  
+  // Committees and Working Groups
+  communications: ROLE_COMMUNICATIONS,
+  membership_engagement: ROLE_MEMBERSHIP_ENGAGEMENT,
+  political_education: ROLE_POLITICAL_EDUCATION,
+  legislation_tracking: ROLE_LEGISLATION_TRACKING,
+  red_rabbits: ROLE_RED_RABBITS,
+  palestine: ROLE_PALESTINE,
+  migrant_rights: ROLE_MIGRANT_RIGHTS,
+  queer_socialists: ROLE_QUEER_SOCIALISTS,
+  arts_culture: ROLE_ARTS_CULTURE,
+  housing_justice: ROLE_HOUSING_JUSTICE,
+  mutual_aid: ROLE_MUTUAL_AID,
+  ydsa: ROLE_YDSA
+};
+
+/**
+ * Display labels for member roles
+ */
+export const memberRoleLabels = {
+  // Pronouns
+  pronoun_he: "HE/HIM",
+  pronoun_she: "SHE/HER",
+  pronoun_they: "THEY/THEM",
+  pronoun_any: "ANY/ALL",
+  
+  // Regions
+  region_north: "Northern-DE",
+  region_south: "Southern-DE",
+  
+  // Committees and Working Groups
+  communications: "Communications Cmte",
+  membership_engagement: "Membership Engagement Cmte",
+  political_education: "Political Education Cmte",
+  legislation_tracking: "Legislation Tracking Cmte",
+  red_rabbits: "Red Rabbits Cmte",
+  palestine: "Palestine Solidarity WG",
+  migrant_rights: "Migrant Rights WG",
+  queer_socialists: "Queer Socialists WG",
+  arts_culture: "Arts & Culture WG",
+  housing_justice: "Housing Justice WG",
+  mutual_aid: "Mutual Aid WG",
+  ydsa: "YDSA"
+};
+
+/**
+ * Role map for affiliates (non-members)
+ * More limited than members
+ */
+export const affiliateRoleMap = {
+  // Pronouns
+  pronoun_he: ROLE_PRONOUN_HE,
+  pronoun_she: ROLE_PRONOUN_SHE,
+  pronoun_they: ROLE_PRONOUN_THEY,
+  pronoun_any: ROLE_PRONOUN_ANY,
+  
+  // Affiliate-specific tags
+  affiliate_non_dsa: ROLE_NON_DSA_MEMBER,
+  affiliate_dsa_non_de: ROLE_DSA_NON_DE
+};
+
+/**
+ * Display labels for affiliate roles
+ */
+export const affiliateRoleLabels = {
+  // Pronouns
+  pronoun_he: "HE/HIM",
+  pronoun_she: "SHE/HER",
+  pronoun_they: "THEY/THEM",
+  pronoun_any: "ANY/ALL",
+  
+  // Affiliate-specific tags
+  affiliate_non_dsa: "Non-DSA Member",
+  affiliate_dsa_non_de: "DSA Member (Non-DE)"
+};
+
+=== utils/sendOnboarding.js ===
+// utils/sendOnboarding.js
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { CHANNEL_ONBOARDING } from '../config.js';
+
+export async function sendOnboarding(member) {
+  try {
+    // Fetch the onboarding channel from the guild
+    const channel = await member.guild.channels.fetch(CHANNEL_ONBOARDING);
+    if (!channel?.isTextBased()) {
+      console.error('Onboarding channel not found or not text-based');
+      return null;
+    }
+
+    // Send the onboarding prompt into the channel, mention the new member
+    const message = await channel.send({
+      content: `🌹 **Welcome to the Delaware DSA community, comrade <@${member.id}>!** 🌹\n\n` +
+      `We're thrilled you've joined our collective struggle for a more just society! Your voice and energy are exactly what our movement needs.\n\n` +
+      `🤔 First things first: Are you already a **DSA member** or joining us as a **community ally**?`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('verify_start')
+            .setLabel('I am a member')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId('affiliate_start')
+            .setLabel('I\'m an affiliate')
+            .setStyle(ButtonStyle.Secondary)
+        )
+      ]
+    });
+
+    console.log(`✅ Onboarding sent in #onboarding for ${member.user.tag}`);
+    return message;
+  } catch (error) {
+    console.error('Error sending onboarding to channel:', error);
+    return null;
+  }
+}
+
+
+=== utils/sessionStore.js ===
+// utils/sessionStore.js
+
+/**
+ * In-memory store for ongoing onboarding selections.
+ * Maps userId → { pronouns: string[], committees: string[] }
+ */
+export const sessionChoices = new Map();
+
+
+=== utils/withErrorHandler.js ===
+import { log } from './logger.js';
+import { ErrorTypes } from './errorTypes.js';
+import { getErrorMessage } from '../config/errorMessages.js';
+
+/**
+ * Wraps a handler function with standardized error handling
+ * @param {Function} fn - The handler function to wrap
+ * @param {Object} options - Options for error handling
+ * @param {boolean} options.suppressConsole - Whether to suppress console logging
+ * @returns {Function} - The wrapped handler function
+ */
+export function withErrorHandler(fn, options = {}) {
+  return async function(interaction, client) {
+    try {
+      return await fn(interaction, client);
+    } catch (err) {
+      // Extract error type and code
+      const errorType = err.type || ErrorTypes.UNKNOWN;
+      const errorCode = err.code || 'UNKNOWN';
+      
+      // Determine appropriate user-facing message
+      const userMessage = getErrorMessage(errorType, errorCode);
+      
+      // Log to console (unless suppressed)
+      if (!options.suppressConsole) {
+        console.error(`[ERROR] ${errorType}:`, err);
+      }
+      
+      // Log to Discord channel
+      await log(
+        interaction.guild, 
+        'error', 
+        `[${errorType}] ${err.message} (User: ${interaction.user.tag})`,
+        {
+          errorType,
+          errorCode,
+          commandName: interaction.commandName,
+          customId: interaction.customId,
+          username: interaction.user.tag
+        }
+      );
+      
+      // Reply to the user
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ 
+          content: userMessage, 
+          ephemeral: true 
+        }).catch(() => {});
+      } else {
+        await interaction.reply({ 
+          content: userMessage, 
+          ephemeral: true 
+        }).catch(() => {});
+      }
+    }
+  };
+}
